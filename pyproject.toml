@@ -1,5 +1,5 @@
 [project]
-name = "install-release"
+name = "InstallReleasePlus"
 version = "0.9.1"
 readme = "README.md"
 description = "Simple package manager to easily install, update and manage any tool directly from github or gitlab releases"
@@ -32,11 +32,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Rishang/install-release"
-Documentation = "https://github.com/Rishang/install-release"
-Repository = "https://github.com/Rishang/install-release"
-Issues = "https://github.com/Rishang/install-release/issues"
-Changelog = "https://github.com/Rishang/install-release/release"
+Homepage = "https://github.com/varung2/InstallReleasePlus"
+Documentation = "https://github.com/varung2/InstallReleasePlus"
+Repository = "https://github.com/varung2/InstallReleasePlus"
+Issues = "https://github.com/varung2/InstallReleasePlus/issues"
+Changelog = "https://github.com/varung2/InstallReleasePlus/releases"
 
 
 [dependency-groups]
@@ -80,5 +80,4 @@ quote-style = "double"
 indent-style = "space"
 
 [project.scripts]
-install-release = "InstallRelease.cli:app"
-ir = "InstallRelease.cli:app"
+irp = "InstallRelease.cli:app"

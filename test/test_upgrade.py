@@ -23,14 +23,17 @@ def test_upgrade_accepts_and_filters_by_name(monkeypatch):
 
 def test_me_upgrade_keeps_running_binary_name(monkeypatch):
     for argv0, expected in [
-        ("/home/u/bin/ir", "ir get https://github.com/Rishang/install-release -n ir"),
         (
-            "install-release",
-            "install-release get https://github.com/Rishang/install-release -n install-release",
+            "/home/u/bin/irp",
+            "irp get https://github.com/varung2/InstallReleasePlus -n irp",
+        ),
+        (
+            "InstallReleasePlus",
+            "InstallReleasePlus get https://github.com/varung2/InstallReleasePlus -n InstallReleasePlus",
         ),
         (
             "/src/InstallRelease/cli.py",
-            "ir get https://github.com/Rishang/install-release -n ir",
+            "irp get https://github.com/varung2/InstallReleasePlus -n irp",
         ),
     ]:
         ran = []

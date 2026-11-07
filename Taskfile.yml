@@ -30,7 +30,7 @@ tasks:
     dir: ./
     desc: Build the CLI
     vars:
-      FILENAME: '{{ .FILENAME | default "install-release" }}'
+      FILENAME: '{{ .FILENAME | default "InstallReleasePlus" }}'
       ARGS: '{{ .ARGS | default "" }}'
     cmds:
       - mkdir -p dist

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from InstallRelease.utils import FilterDataclass
 
-_valid_install_methods = ["binary", "package"]
+_valid_install_methods = ["binary", "package", "download"]
 _valid_package_types = ["deb", "rpm", "AppImage", "binary"]
 
 
@@ -51,8 +51,12 @@ class Release:
     package_type: str | None = field(
         default="binary"
     )  # "deb", "rpm", "AppImage", "binary"
-    install_method: str | None = field(default="binary")  # "binary" or "package"
+    install_method: str | None = field(default="binary")  # binary, package, download
     package_name: str | None = field(default=None)
+    download_dir: str | None = None
+    download_files: list[str] = field(default_factory=list)
+    # None means all uploaded assets; a string selects an exact filename.
+    download_file: str | None = None
 
     def __post_init__(self):
         if self.package_type and self.package_type.lower() == "appimage":

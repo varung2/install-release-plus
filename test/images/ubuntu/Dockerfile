@@ -18,7 +18,7 @@ COPY pyproject.toml uv.lock ./
 # Sync dependencies (including dev tools like pytest) and install package
 RUN uv sync --frozen --dev
 
-# Ensure venv bin is on PATH so `ir` and `install-release` are available
+# Ensure venv bin is on PATH so `irp` is available
 ENV PATH="/root/bin:/app/.venv/bin:$PATH"
 ENV NO_COLOR=1
 ENV PYTHONIOENCODING="utf-8"

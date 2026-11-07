@@ -58,7 +58,7 @@ if os.environ.get("IR_DEBUG", "").lower() == "true":
     setLogger(debug=True)
 
 app = typer.Typer(
-    help="GitHub / GitLab / Mise release installer based on your system (Linux/MacOS). Repo: https://github.com/Rishang/install-release",
+    help="InstallReleasePlus: GitHub / GitLab / Mise release installer based on your system (Linux/MacOS). Repo: https://github.com/varung2/InstallReleasePlus",
     pretty_exceptions_enable=False,
 )
 
@@ -95,7 +95,7 @@ def get(
     ),
 ):
     """
-    | Install CLI tool from GitHub/GitLab releases or mise registry
+    | Install a CLI tool or keep a release archive as a tracked download
     """
 
     setLogger(quiet, debug)
@@ -265,11 +265,11 @@ def pull(
     override: bool = typer.Option(
         False,
         "-O",
-        help="Override local tool version with remote install-release state version.",
+        help="Override local tool version with remote InstallReleasePlus state version.",
     ),
 ):
     """
-    | Install tools from the remote install-release state URL
+    | Install tools from the remote InstallReleasePlus state URL
     """
     setLogger(debug=debug)
 
@@ -295,25 +295,25 @@ def _hold(
 @app.command(name="me")
 def me(
     update: bool = typer.Option(
-        False, "--upgrade", "-U", help="Update the Install-Release tool."
+        False, "--upgrade", "-U", help="Update the InstallReleasePlus tool."
     ),
     version: bool = typer.Option(
-        False, "--version", help="Print version of the Install-Release tool."
+        False, "--version", help="Print version of the InstallReleasePlus tool."
     ),
 ):
     """
-    | Update the Install-Release tool.
+    | Update the InstallReleasePlus tool.
     """
 
     _v = install_release_version._local_version
 
     if update:
-        # Reinstall under the name this binary runs as (e.g. `ir`), so the
-        # upgrade overwrites it instead of creating ~/bin/install-release
+        # Reinstall under the name this binary runs as (e.g. `irp`), so the
+        # upgrade overwrites it instead of creating ~/bin/irp
         _name = os.path.basename(sys.argv[0])
         if not _name or _name.endswith(".py"):
-            _name = "ir"
-        _cmd = f"{_name} get https://github.com/Rishang/install-release -n {_name}"
+            _name = "irp"
+        _cmd = f"{_name} get https://github.com/varung2/InstallReleasePlus -n {_name}"
         pprint(f"Running: {_cmd}")
 
         os.system(_cmd)
@@ -326,7 +326,7 @@ def me(
         pprint(_v)
     else:
         pprint(f"Version: {_v}")
-        pprint("Repo:    https://github.com/Rishang/install-release")
+        pprint("Repo:    https://github.com/varung2/InstallReleasePlus")
 
 
 if __name__ == "__main__":

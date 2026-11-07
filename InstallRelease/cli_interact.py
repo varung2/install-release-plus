@@ -11,6 +11,7 @@ from InstallRelease.config import (  # noqa: F401
     dest,
     pre_release_enabled,
 )
+from InstallRelease.download import download_release
 from InstallRelease.pkgs.main import PackageInstaller
 from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
 from InstallRelease.providers.docker.main import (
@@ -35,7 +36,7 @@ from InstallRelease.utils import (
 )
 
 console = Console(width=40)
-install_release_version = PackageVersion("install-release")
+install_release_version = PackageVersion("InstallReleasePlus")
 
 
 def is_package(state, k):
@@ -188,7 +189,7 @@ def upgrade(
         pprint("\n[bold cyan]Following package can be upgraded.[/]\n")
         pprint("[bold indian_red]" + " ".join(pkg_upgrades))
         pprint(
-            "\n[bold white]To upgrade packages, run: [green]ir upgrade --pkg[/green][/]\n"
+            "\n[bold white]To upgrade packages, run: [green]irp upgrade --pkg[/green][/]\n"
         )
 
     # Phase 2: prompt and install pending upgrades
@@ -222,6 +223,17 @@ def upgrade(
         pprint(
             f"[bold yellow]({pct}%) Updating: {name}, {state[k].tag_name} => {new_version}[/]"
         )
+        if state[k].install_method == "download":
+            download_release(
+                url,
+                version=new_version,
+                asset_file=state[k].download_file or "",
+                output=state[k].download_dir or "",
+                hold=bool(state[k].hold_update),
+                prompt=False,
+                all_assets=state[k].download_file is None,
+            )
+            continue
         get(
             url,
             version=new_version,
@@ -260,10 +272,14 @@ def list_install(
             {
                 "name": irKey.parse(key).name,
                 "version": release.tag_name,
-                "type": release.package_type if release.is_package else "binary",
+                "type": "download"
+                if release.install_method == "download"
+                else (release.package_type if release.is_package else "binary"),
                 "hold": bool(release.hold_update),
                 "url": release.url,
                 "description": release.description or "",
+                "download_dir": release.download_dir,
+                "download_files": release.download_files,
             }
         )
 
@@ -320,6 +336,16 @@ def get_info(name: str) -> None:
                 title=f"Info: {name}",
                 no_wrap=False,
             )
+            if release.install_method == "download":
+                console.print(
+                    "Download directory:",
+                    release.download_dir,
+                    markup=False,
+                    soft_wrap=True,
+                )
+                console.print("Downloaded files:", markup=False)
+                for file in release.download_files:
+                    console.print(file, markup=False, soft_wrap=True)
             return
 
     pprint(f"[red]Tool not found: {name}")
@@ -339,7 +365,15 @@ def remove(name: str) -> None:
             pop_key = key
             release = state[key]
 
-            if is_package(state, key):
+            if release.install_method == "download":
+                try:
+                    for file in release.download_files:
+                        if os.path.lexists(file):
+                            os.remove(file)
+                except OSError as exc:
+                    logger.error(f"Failed to remove download: {exc}")
+                    return
+            elif is_package(state, key):
                 if not release.package_type or release.package_type == "binary":
                     logger.warning(f"{name} was not installed as a package")
                 else:
@@ -427,4 +461,15 @@ def pull_state(url: str = "", override: bool = False) -> None:
 
     for key in temp:
         i = irKey.parse(key)
+        if temp[key].install_method == "download":
+            # Imported absolute paths belong to another machine. Use local config.
+            download_release(
+                i.url,
+                version=temp[key].tag_name,
+                asset_file=temp[key].download_file or "",
+                hold=bool(temp[key].hold_update),
+                prompt=False,
+                all_assets=temp[key].download_file is None,
+            )
+            continue
         get(i.url, version=temp[key].tag_name, prompt=False, name=i.name)

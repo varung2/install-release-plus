@@ -5,7 +5,10 @@ import sys
 from tempfile import TemporaryDirectory
 from typing import Any, cast
 
+import typer
+
 from InstallRelease.config import cache_config, config, dest, pre_release_enabled
+from InstallRelease.download import store_release_assets
 from InstallRelease.helper import (
     detect_package_type_from_asset_name,
     detect_package_type_from_os_release,
@@ -14,6 +17,7 @@ from InstallRelease.helper import (
     load_state,
     save_state,
 )
+from InstallRelease.helper.install import is_archive_asset
 from InstallRelease.helper.release_scorer import PACKAGE_ALIASES, PENALTY_EXTENSIONS
 from InstallRelease.pkgs.main import PackageInstaller
 from InstallRelease.providers.base import InteractProvider, Provider
@@ -49,7 +53,7 @@ def host_token(tokens: dict[str, str], host: str) -> str:
         tokens[host] = ""
         cache_config.save()
         logger.info(
-            f"Registered new host '{host}', set a token with: ir config --host {host}"
+            f"Registered new host '{host}', set a token with: irp config --host {host}"
         )
     return tokens[host] or ""
 
@@ -132,7 +136,7 @@ def _show_pkg_hint(
     if pkg:
         pprint(
             f"\n[bold orange1]>> 📦 A [green]{pkg}[/green] package is "
-            f"available for this release. Use [green]ir get {repo_url} --pkg[/green] to install it.[/bold orange1]"
+            f"available for this release. Use [green]irp get {repo_url} --pkg[/green] to install it.[/bold orange1]"
         )
 
 
@@ -177,6 +181,18 @@ def _select_asset_by_id(release: Release, selection: str) -> ReleaseAssets | Non
         return choices[sid]
     pprint(f"[red]Invalid ID. Please select between 1 and {len(choices)}[/red]")
     return None
+
+
+def _archive_action() -> str:
+    """Choose intent before downloading; installation remains the default."""
+    typer.echo("\nSelected asset is an archive:")
+    typer.echo("  1. Install its executable")
+    typer.echo("  2. Keep archive as a tracked download")
+    while True:
+        choice = typer.prompt("Archive action (1/2/n)", default="1").strip().lower()
+        if choice in ("1", "2", "n"):
+            return choice
+        typer.echo("Choose 1, 2, or n to cancel.")
 
 
 # ── GitInteractProvider ──────────────────────────────────────────────────────
@@ -286,7 +302,7 @@ class GitInteractProvider(InteractProvider):
         repo_name = self.repo.repo_url.rstrip("/").rsplit("/", 1)[-1]
         pprint(
             f"[bold cyan]\nYou can retry installing via [mise] provider: "
-            f"\n[green]ir get mise@{repo_name}[/green][/]\n"
+            f"\n[green]irp get mise@{repo_name}[/green][/]\n"
         )
         return None
 
@@ -315,7 +331,12 @@ class GitInteractProvider(InteractProvider):
             title=f"🚀 Install: {toolname}",
         )
         pprint(f"[color(6)]\nPath: {dest}")
-        pprint("[color(34)]Install selected tool? [Y/n/ Asset ID]: ", end="")
+        question = (
+            "Use selected asset?"
+            if is_archive_asset(candidate.name)
+            else "Install selected tool?"
+        )
+        pprint(f"[color(34)]{question} [Y/n/ Asset ID]: ", end="")
         return input().strip().lower() or "y"
 
     def install(
@@ -422,6 +443,36 @@ class GitInteractProvider(InteractProvider):
                     return
                 asset = selected
                 custom_words = _extract_words_from_filename(asset.name)
+            if is_archive_asset(asset.name):
+                action = _archive_action()
+                if action == "n":
+                    return
+                release = self._selected_release
+                if release is None:
+                    return
+                if action == "2":
+                    store_release_assets(
+                        self.repo,
+                        release,
+                        [asset],
+                        output=dest,
+                        hold=hold,
+                        asset_file=asset.name,
+                    )
+                    return
+                show_table(
+                    [
+                        {
+                            "Name": toolname,
+                            "Selected file": asset.name,
+                            "Version": release.tag_name,
+                        }
+                    ],
+                    title="Install archive executable",
+                )
+                typer.echo(f"Path: {dest}")
+                if not typer.confirm("Install its executable?", default=True):
+                    return
             pprint("\n[magenta]Downloading...[/magenta]")
 
         # Step 4: install

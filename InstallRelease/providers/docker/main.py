@@ -229,7 +229,7 @@ class DockerInteractProvider(InteractProvider):
         # Step 5
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         release = Release(
-            url=f"docker@{image.cli_image}",  # user-facing format shown by ir ls
+            url=f"docker@{image.cli_image}",  # user-facing format shown by irp ls
             name=toolname,
             tag_name=image.tag,
             prerelease=False,

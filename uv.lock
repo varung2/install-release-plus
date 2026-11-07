@@ -278,7 +278,7 @@ wheels = [
 ]
 
 [[package]]
-name = "install-release"
+name = "installreleaseplus"
 version = "0.9.1"
 source = { editable = "." }
 dependencies = [

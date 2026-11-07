@@ -15,6 +15,31 @@ from InstallRelease.utils import download, extract, logger, sh
 _EXEC_PATTERN = r"application\/(x-(\w+-)?(executable|binary)|javascript)"
 
 
+def is_archive_asset(name: str) -> bool:
+    """Recognize archive/compressed assets by filename before downloading them.
+
+    This identifies the container, not whether it contains an executable.
+    Native packages and AppImages retain their existing installation flow.
+    """
+    return name.lower().endswith(
+        (
+            ".tar",
+            ".zip",
+            ".7z",
+            ".gz",
+            ".tgz",
+            ".bz2",
+            ".tbz",
+            ".tbz2",
+            ".xz",
+            ".txz",
+            ".zst",
+            ".tzst",
+            ".tar.z",
+        )
+    )
+
+
 # ── Download + extract ───────────────────────────────────────────────────────
 
 
