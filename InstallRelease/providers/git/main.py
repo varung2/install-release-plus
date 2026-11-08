@@ -23,7 +23,7 @@ from InstallRelease.helper.collision import confirm_binary_install
 from InstallRelease.helper.install import is_archive_asset
 from InstallRelease.helper.release_scorer import PACKAGE_ALIASES, PENALTY_EXTENSIONS
 from InstallRelease.pkgs.main import PackageInstaller
-from InstallRelease.providers.base import InteractProvider, Provider
+from InstallRelease.providers.base import InteractProvider, Provider, output_directory
 from InstallRelease.providers.git.base import (
     ApiError,
     RepoInfo,
@@ -211,6 +211,7 @@ class GitInteractProvider(InteractProvider):
         package_type: str | None = None,
     ) -> None:
         self.repo = repo
+        self.destination = dest
         self.package_mode = package_mode
         self.package_type: str | None = package_type or os_package_type
         self._releases: list[Release] = []
@@ -333,7 +334,7 @@ class GitInteractProvider(InteractProvider):
             ],
             title=f"🚀 Install: {toolname}",
         )
-        pprint(f"[color(6)]\nPath: {dest}")
+        pprint(f"[color(6)]\nPath: {self.destination}")
         question = (
             "Use selected asset?"
             if is_archive_asset(candidate.name)
@@ -378,10 +379,14 @@ class GitInteractProvider(InteractProvider):
         else:
             extract_url(candidate.browser_download_url, temp_dir)
             release.assets = [candidate]
-            mkdir(dest)
-            if not install_bin(src=temp_dir, dest=dest, local=local, name=toolname):
+            mkdir(self.destination)
+            if not install_bin(
+                src=temp_dir, dest=self.destination, local=local, name=toolname
+            ):
                 return False
-            release.install_path = os.path.abspath(os.path.join(dest, toolname))
+            release.install_path = os.path.abspath(
+                os.path.join(self.destination, toolname)
+            )
         return True
 
     def save_state(self, key: str, result: Release) -> None:
@@ -396,6 +401,12 @@ class GitInteractProvider(InteractProvider):
         hold: bool = False,
         **kwargs: Any,
     ) -> None:
+        output = kwargs.get("output", "")
+        self.destination = output_directory(output, dest)
+        if output and self.package_mode:
+            raise ValueError(
+                "--output is not supported for native packages; their package manager controls installation paths."
+            )
         asset_file: str = kwargs.get("asset_file", "")
         custom_words = (
             _extract_words_from_filename(asset_file)
@@ -437,6 +448,10 @@ class GitInteractProvider(InteractProvider):
         )
         if asset is None:
             return
+        if output and detect_package_type_from_asset_name(asset.name):
+            raise ValueError(
+                "--output is not supported for native packages; their package manager controls installation paths."
+            )
 
         # Step 3: confirm with user
         if prompt:
@@ -463,7 +478,7 @@ class GitInteractProvider(InteractProvider):
                         self.repo,
                         release,
                         [asset],
-                        output=dest,
+                        output=self.destination,
                         hold=hold,
                         asset_file=asset.name,
                     )
@@ -478,13 +493,17 @@ class GitInteractProvider(InteractProvider):
                     ],
                     title="Install archive executable",
                 )
-                typer.echo(f"Path: {dest}")
+                typer.echo(f"Path: {self.destination}")
                 if not typer.confirm("Install its executable?", default=True):
                     return
         # Check the final selected asset, including interactive ID overrides.
         effective_pkg = detect_package_type_from_asset_name(asset.name) or (
             self.package_type if self.package_mode else None
         )
+        if output and effective_pkg:
+            raise ValueError(
+                "--output is not supported for native packages; their package manager controls installation paths."
+            )
         if not effective_pkg:
             release = self._selected_release
             if release is None:
@@ -493,7 +512,7 @@ class GitInteractProvider(InteractProvider):
                 release,
                 assets=[asset],
                 install_method="binary",
-                install_path=os.path.abspath(os.path.join(dest, toolname)),
+                install_path=os.path.abspath(os.path.join(self.destination, toolname)),
                 hold_update=hold,
             )
             if not confirm_binary_install(

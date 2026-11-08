@@ -324,6 +324,20 @@ def test_get_archive_yes_keeps_existing_install_behavior(
     assert "Archive action" not in result.output
 
 
+@pytest.mark.parametrize("asset", ["skills.deb", "skills.rpm", "skills.AppImage"])
+def test_native_asset_rejects_custom_output_before_install(
+    environment, archive_installer, tmp_path, asset
+):
+    environment.value = release(names=(asset,))
+    output = tmp_path / "native-output"
+    result = CliRunner().invoke(
+        cli.app, ["get", URL, "--file", asset, "--output", str(output), "-y"]
+    )
+    assert result.exit_code == 1, result.output
+    assert not archive_installer
+    assert not output.exists()
+
+
 def test_get_archive_invalid_action_reprompts(environment, archive_installer):
     result = CliRunner().invoke(
         cli.app, ["get", URL, "--file", "skills.zip"], input="y\ninvalid\n2\ny\n"

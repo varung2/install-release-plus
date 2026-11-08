@@ -17,7 +17,7 @@ from InstallRelease.utils import show_table
 def binary_path(key: str, release: Release, directory: str) -> str | None:
     if release.install_method != "binary":
         return None
-    return os.path.abspath(
+    return os.path.realpath(
         release.install_path or os.path.join(directory, irKey.parse(key).name)
     )
 
@@ -61,6 +61,14 @@ def confirm_binary_install(
     path = os.path.abspath(path)
     name = irKey.parse(key).name
     directory = os.path.dirname(path)
+    cached = cache.state.get(key)
+    if cached and cached.install_method == "binary" and cached.install_path:
+        previous_path = os.path.realpath(cached.install_path)
+        if previous_path != os.path.realpath(path):
+            raise ValueError(
+                f"This binary is tracked at {cached.install_path}; use --output "
+                f"with {os.path.dirname(cached.install_path)}, or remove it before relocating it"
+            )
     if os.path.islink(path) or (os.path.lexists(path) and not os.path.isfile(path)):
         raise ValueError(f"Refusing to overwrite a symlink or non-regular file: {path}")
 

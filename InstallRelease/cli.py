@@ -81,6 +81,12 @@ def get(
     asset_file: str = typer.Option(
         "", "-f", "--file", help="Select a specific release asset filename."
     ),
+    output: str = typer.Option(
+        "",
+        "-o",
+        "--output",
+        help="Destination directory for this install or tracked download; defaults to the configured path.",
+    ),
     name: str = typer.Option(
         "",
         "-n",
@@ -121,6 +127,7 @@ def get(
             pkg=pkg,
             hold=bool(tag_name),
             docker_opts=docker_opts,
+            output=output,
         )
     except (ValueError, OSError) as exc:
         logger.error(str(exc))

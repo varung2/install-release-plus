@@ -573,6 +573,8 @@ irp get https://github.com/owner/project
 irp get https://github.com/owner/project --file skills.zip
 # Optionally select a specific release:
 irp get https://github.com/owner/project --tag v1.2.0 --file skills.zip
+# Keep the chosen archive in a custom directory without changing defaults:
+irp get https://github.com/owner/project --file skills.zip --output ~/downloads/skills
 ```
 
 Choose an archive Asset ID (or accept irp's suggestion), choose **2**, then review
@@ -580,9 +582,23 @@ and confirm the download. Omitting `--tag` resolves the latest release, honoring
 prerelease configuration. An explicit tag holds updates, as with executable
 installations. GitHub's automatically generated source archives are not included.
 
-Kept archives use the directory set by `irp config --path` (or `~/bin` if unset).
+Use `--output <directory>` (or `-o`) to override the destination for one `get`
+invocation. Without it, kept archives use the directory set by
+`irp config --path` (or `~/bin` if unset). This does not modify configuration.
+Relative paths and `~` are expanded to an absolute directory, shown before
+confirmation and saved with the tracked item. Cancelled installs/downloads do
+not create the directory.
+
+The same option applies to executable installs, mise tools, and Docker wrappers;
+their saved binary paths are also reused for upgrades and removal. Native
+packages, including AppImages, reject `--output` because the package installer
+controls their paths. It sets the actual destination, without symlinks or separate
+storage and executable directories.
+
 Upgrades reuse their recorded directory even if the configuration changes.
-To relocate an existing tracked download, remove it and download it again.
+To relocate an existing tracked binary or download, remove it and get it again
+with the new `--output` directory. Repeating `get` without `--output` still uses
+the configured default; specify the saved directory to refresh a custom install.
 Enter `n` at asset selection, the archive choice, or final confirmation to cancel
 before writing files.
 

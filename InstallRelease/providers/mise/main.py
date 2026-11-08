@@ -12,7 +12,11 @@ import requests
 from InstallRelease.config import config, dest
 from InstallRelease.helper import extract_url, install_bin, save_state
 from InstallRelease.helper.collision import confirm_binary_install
-from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
+from InstallRelease.providers.base import (
+    PROVIDER_STATE_KEY_PREFIXES,
+    InteractProvider,
+    output_directory,
+)
 from InstallRelease.providers.git.schemas import Release, ReleaseAssets
 from InstallRelease.providers.mise.registry import (
     get_aqua_registry_yaml,
@@ -77,6 +81,7 @@ class MiseInteractProvider(InteractProvider):
 
     def __init__(self, toolname: str) -> None:
         self.toolname = toolname
+        self.destination = dest
         self._asset: AquaAsset | None = None
         self._version: str = ""
         self._backend: MiseToolInfo | None = None
@@ -187,6 +192,7 @@ class MiseInteractProvider(InteractProvider):
             title=f"Install {toolname} (via mise/aqua)",
             no_wrap=False,
         )
+        pprint(f"Path: {self.destination}")
         pprint("[color(34)]Install selected tool? [Y/n]: ", end="")
         return input().strip().lower() or "y"
 
@@ -206,8 +212,10 @@ class MiseInteractProvider(InteractProvider):
             logger.error(f"Download/extract failed: {e}")
             return False
 
-        mkdir(dest)
-        if not install_bin(src=temp_dir, dest=dest, local=local, name=toolname):
+        mkdir(self.destination)
+        if not install_bin(
+            src=temp_dir, dest=self.destination, local=local, name=toolname
+        ):
             logger.error(f"Failed to install binary for '{toolname}'")
             return False
         return True
@@ -228,6 +236,7 @@ class MiseInteractProvider(InteractProvider):
         hold: bool = False,
         **kwargs: Any,
     ) -> None:
+        self.destination = output_directory(kwargs.get("output", ""), dest)
         toolname = name or self.toolname
 
         # Step 1
@@ -269,7 +278,7 @@ class MiseInteractProvider(InteractProvider):
             published_at=now_str,
             assets=[release_asset],
             description=asset.description or "Installed via mise/aqua registry",
-            install_path=os.path.abspath(os.path.join(dest, toolname)),
+            install_path=os.path.abspath(os.path.join(self.destination, toolname)),
         )
         release.hold_update = hold
 

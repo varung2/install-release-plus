@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import pytest
 from typer.testing import CliRunner
 
-from InstallRelease import cli
+from InstallRelease import cli, cli_interact
 from InstallRelease import download as downloads
 from InstallRelease.config import cache
 from InstallRelease.providers.git import github
@@ -53,13 +53,18 @@ def local_release(monkeypatch, tmp_path):
                 data = json.dumps(
                     {"name": "tool", "full_name": "offline/tool"}
                 ).encode()
-            elif self.path == "/repos/offline/tool/releases/latest":
+            elif self.path in (
+                "/repos/offline/tool/releases/latest",
+                f"/repos/offline/tool/releases/tags/{payload.get('tag', 'v1')}",
+            ):
                 data = json.dumps(
                     {
                         "name": "tool",
-                        "tag_name": "v1",
+                        "tag_name": payload.get("tag", "v1"),
                         "prerelease": False,
-                        "published_at": "2026-01-01T00:00:00Z",
+                        "published_at": payload.get(
+                            "published", "2026-01-01T00:00:00Z"
+                        ),
                         "assets": [
                             {
                                 "id": 1,
@@ -244,3 +249,100 @@ def test_offline_guard_rejects_external_dns():
 
     with pytest.raises(AssertionError, match="External DNS is disabled"):
         socket.getaddrinfo("example.invalid", 443)
+
+
+@pytest.mark.parametrize("mode,option", [("download", "--output"), ("binary", "-o")])
+def test_custom_output_survives_upgrade_listing_and_removal(
+    local_release, monkeypatch, tmp_path, mode, option
+):
+    payload, default, _, _ = local_release
+    monkeypatch.chdir(tmp_path)
+    custom = tmp_path / "custom releases"
+    config_before = dict(vars(cli_interact.config))
+    default.mkdir()
+    sentinel = default / "tool"
+    sentinel.write_bytes(b"unrelated default installation")
+    runner = CliRunner()
+    answers = "y\n2\ny\n" if mode == "download" else "y\n1\ny\n"
+    result = runner.invoke(
+        cli.app,
+        ["get", REPOSITORY, "--file", "tool.tar.gz", option, "custom releases"],
+        input=answers,
+    )
+    assert result.exit_code == 0, result.output
+    name = "tool-download" if mode == "download" else "tool"
+    target = custom / ("tool.tar.gz" if mode == "download" else "tool")
+    assert target.is_file()
+    assert str(custom) in result.output
+    assert sentinel.read_bytes() == b"unrelated default installation"
+    assert vars(cli_interact.config) == config_before
+    row = json.loads(runner.invoke(cli.app, ["ls", "--json"]).output)[0]
+    assert row["install_path"] == str(custom if mode == "download" else target)
+
+    # An upgrade must use the saved per-project path, not a changed default.
+    changed_default = str(tmp_path / "changed-default")
+    for module in (cli_interact, git_main, downloads):
+        monkeypatch.setattr(module, "dest", changed_default)
+    payload.update(tag="v2", published="2026-02-01T00:00:00Z")
+    result = runner.invoke(cli.app, ["upgrade", name, "--yes"])
+    assert result.exit_code == 0, result.output
+    assert cache.state[f"{REPOSITORY}#{name}"].tag_name == "v2"
+    assert target.is_file()
+    assert not Path(changed_default).exists()
+    result = runner.invoke(cli.app, ["rm", name])
+    assert result.exit_code == 0, result.output
+    assert not target.exists()
+    assert sentinel.read_bytes() == b"unrelated default installation"
+
+
+def test_custom_output_collision_decline_preserves_both_directories(
+    local_release, tmp_path
+):
+    payload, default, _, _ = local_release
+    custom = tmp_path / "custom"
+    custom.mkdir()
+    target = custom / "tool"
+    target.write_bytes(b"existing custom binary")
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--output", str(custom)], input="y\n1\ny\nn\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert target.read_bytes() == b"existing custom binary"
+    assert "/tool.tar.gz" not in payload["requests"]
+    assert not default.exists()
+    assert not cache.state
+
+
+def test_cancelled_custom_download_creates_no_output_directory(local_release, tmp_path):
+    payload, _, _, _ = local_release
+    custom = tmp_path / "cancelled"
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--output", str(custom)], input="y\n2\nn\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert not custom.exists()
+    assert "/tool.tar.gz" not in payload["requests"]
+    assert not cache.state
+
+
+def test_output_file_rejected_before_fetching_release(local_release, tmp_path):
+    payload, _, _, _ = local_release
+    target = tmp_path / "file"
+    target.write_bytes(b"preserve")
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--output", str(target), "-y"]
+    )
+    assert result.exit_code == 1, result.output
+    assert target.read_bytes() == b"preserve"
+    assert not payload["requests"]
+
+
+def test_native_package_output_rejected_before_fetching(local_release, tmp_path):
+    payload, _, _, _ = local_release
+    target = tmp_path / "native"
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--pkg", "-o", str(target), "-y"]
+    )
+    assert result.exit_code == 1, result.output
+    assert not payload["requests"]
+    assert not target.exists()

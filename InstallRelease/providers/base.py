@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from InstallRelease.providers.git.schemas import Release, RepositoryInfo
@@ -14,6 +15,15 @@ PROVIDER_STATE_KEY_PREFIXES: dict[str, str] = {
     "mise": "mise:",
     "docker": "docker:",
 }
+
+
+def output_directory(output: str, default: str) -> str:
+    """Resolve a per-invocation destination without creating it or changing config."""
+    directory = Path(output or default).expanduser().resolve()
+    for path in (directory, *directory.parents):
+        if path.exists() and not path.is_dir():
+            raise ValueError(f"Output path must be a directory: {path}")
+    return str(directory)
 
 
 class Provider(ABC):
