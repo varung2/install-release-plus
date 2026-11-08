@@ -58,6 +58,12 @@ its ID before confirming. Selecting an archive offers **Install its executable**
 or **Keep archive as a tracked download**, followed by final confirmation.
 An explicit `--tag` also places the item on hold to preserve that version.
 
+GitHub releases also list their generated source archives as `source.tar.gz` and
+`source.zip`, including releases with no uploaded assets. Uploaded assets remain
+preferred for automatic selection. To keep a source archive, use
+`irp get <repo-url> --file source.zip -o ~/downloads/sources`, choose **2**, then
+confirm. Source archives remain compressed; this does not extract or install skills.
+
 Kept archives remain intact and are tracked as `<repo>-download` by default.
 Use the same `ls`, `info`, `upgrade`, and `rm` commands to manage them. Upgrades
 look for the same asset filename in the newer release. `get -y` skips prompts

@@ -45,12 +45,16 @@ def is_archive_asset(name: str) -> bool:
 # ── Download + extract ───────────────────────────────────────────────────────
 
 
-def extract_url(url: str, at: str) -> bool:
+def extract_url(url: str, at: str, *, filename: str = "") -> bool:
     """Download *url* into *at* and extract if it is an archive.
 
     Returns ``True`` on success; propagates exceptions from ``extract()``.
     """
     path = download(url, at)
+    if filename:
+        named_path = os.path.join(at, filename)
+        os.replace(path, named_path)
+        path = named_path
     logger.debug(f"Downloaded: {path}")
     if not re.match(_EXEC_PATTERN, detect_from_filename(path).mime_type):
         extract(path=path, at=at)

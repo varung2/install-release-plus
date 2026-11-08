@@ -102,7 +102,9 @@ def get_release(
         logger.warning("No suitable release found (non-prerelease with assets)")
         return False
 
-    best_name = scorer.select_best([a.name for a in target.assets])
+    # Generated source archives must not change scoring of uploaded artifacts.
+    assets = [a for a in target.assets if not a.source_archive] or target.assets
+    best_name = scorer.select_best([a.name for a in assets])
     if not best_name:
         logger.warning(f"No matching release found for {repo_url}")
         return False

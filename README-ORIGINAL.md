@@ -580,7 +580,23 @@ irp get https://github.com/owner/project --file skills.zip --output ~/downloads/
 Choose an archive Asset ID (or accept irp's suggestion), choose **2**, then review
 and confirm the download. Omitting `--tag` resolves the latest release, honoring
 prerelease configuration. An explicit tag holds updates, as with executable
-installations. GitHub's automatically generated source archives are not included.
+installations.
+
+GitHub's `tarball_url` and `zipball_url` appear after uploaded assets as
+`source.tar.gz` and `source.zip` when those URLs are present. This also supports
+releases with no uploaded assets. These names stay the same across tags so
+tracked source downloads can upgrade. Uploaded files with the same names take
+precedence. GitHub does not provide size or download counts for these generated
+archives, so their entries show **Unknown**.
+
+Uploaded assets retain their automatic selection priority. Select a source
+archive by its Asset ID or filename, then choose **2** to keep it:
+
+```sh
+irp get https://github.com/addyosmani/agent-skills --file source.zip -o ~/.agents/archives/addyosmani
+```
+
+This keeps the compressed archive. It does not extract or install its skills.
 
 Use `--output <directory>` (or `-o`) to override the destination for one `get`
 invocation. Without it, kept archives use the directory set by
