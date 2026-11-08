@@ -38,6 +38,14 @@ if os.environ.get("installState", "") == "test":
 else:
     __spath = {"state_path": "", "config_path": ""}
 
+if state_dir := os.environ.get("IRP_STATE_DIR"):
+    state_dir = os.path.abspath(os.path.expanduser(state_dir))
+    os.makedirs(state_dir, exist_ok=True)
+    __spath = {
+        "state_path": os.path.join(state_dir, "state.json"),
+        "config_path": os.path.join(state_dir, "config.json"),
+    }
+
 
 cache = State(
     file_path=platform_path(paths=state_path, alt=__spath["state_path"]),

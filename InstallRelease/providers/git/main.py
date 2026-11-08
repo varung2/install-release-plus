@@ -478,7 +478,9 @@ class GitInteractProvider(InteractProvider):
         # Step 4: install
         with TemporaryDirectory(prefix=f"dn_{self.repo.repo_name}_") as tmp:
             if not self.install(asset, toolname=toolname, temp_dir=tmp, local=local):
-                return
+                raise ValueError(
+                    f"Failed to install {toolname}; no installation state was saved"
+                )
 
         # Step 5: persist state
         release = self._selected_release

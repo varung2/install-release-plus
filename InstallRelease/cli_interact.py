@@ -102,6 +102,19 @@ def get(
     )
 
 
+def _matching_keys(state: TypeState, name: str | None) -> list[str]:
+    if name is None:
+        return list(state)
+    if name in state:
+        return [name]
+    matches = [key for key in state if irKey.parse(key).name == name]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Ambiguous tool name '{name}'; use a full state key: " + ", ".join(matches)
+        )
+    return matches
+
+
 def upgrade(
     force: bool = False,
     skip_prompt: bool = False,
@@ -116,9 +129,9 @@ def upgrade(
     state_info()
 
     state: TypeState = cache.state
-    keys = [k for k in state if not name or irKey.parse(k).name == name]
+    keys = _matching_keys(state, name)
 
-    # Collect upgrade candidates: name -> (url, new_version, is_package)
+    # Collect upgrade candidates: full state key -> (url, new_version, is_package)
     upgrades: dict[str, tuple[str, str, bool]] = {}
     pkg_upgrades: set[str] = set()  # names only, for notification
     _lock = threading.Lock()
@@ -143,7 +156,7 @@ def upgrade(
             versions = MiseInteractProvider(toolname).resolve()
             if versions and (force or versions[0] != state[k].tag_name):
                 with _lock:
-                    upgrades[i.name] = (i.url, versions[0], False)
+                    upgrades[k] = (i.url, versions[0], False)
             return
 
         # ── docker tools ─────────────────────────────────────────────────────
@@ -158,7 +171,7 @@ def upgrade(
             pprint(f"Checking: [blue]docker@{cli_image}:{tag}[/blue]")
             if docker_needs_update(image_ref, tag, force=force):
                 with _lock:
-                    upgrades[i.name] = (i.url, tag, False)
+                    upgrades[k] = (i.url, tag, False)
             return
 
         # ── git tools ───────────────────────────────────────────────────────
@@ -175,7 +188,7 @@ def upgrade(
                 if is_package(state, k) and not packages_only and not name:
                     pkg_upgrades.add(i.name)
                 else:
-                    upgrades[i.name] = (
+                    upgrades[k] = (
                         repo.repo_url,
                         releases[0].tag_name,
                         is_package(state, k),
@@ -215,9 +228,9 @@ def upgrade(
         return
 
     total = len(upgrades)
-    for idx, name in enumerate(upgrades, 1):
-        url, new_version, pkg_mode = upgrades[name]
-        k = f"{url}#{name}"
+    for idx, k in enumerate(upgrades, 1):
+        name = irKey.parse(k).name
+        url, new_version, pkg_mode = upgrades[k]
         docker_opts = state[k].docker_opts
         pct = int(idx * 100 / total)
         pprint(
@@ -359,41 +372,41 @@ def remove(name: str) -> None:
     pop_key = ""
 
     # Find the tool in state, uninstall its binary or package
-    for key in state:
+    for key in _matching_keys(state, name):
         i = irKey.parse(key)
-        if i.name == name:
-            pop_key = key
-            release = state[key]
+        pop_key = key
+        name = i.name
+        release = state[key]
 
-            if release.install_method == "download":
-                try:
-                    for file in release.download_files:
-                        if os.path.lexists(file):
-                            os.remove(file)
-                except OSError as exc:
-                    logger.error(f"Failed to remove download: {exc}")
-                    return
-            elif is_package(state, key):
-                if not release.package_type or release.package_type == "binary":
-                    logger.warning(f"{name} was not installed as a package")
-                else:
-                    pkg_name = release.package_name or name
-                    if pkg_name != name:
-                        logger.debug(
-                            f"Using actual package name '{pkg_name}' instead of '{name}'"
-                        )
-                    PackageInstaller(
-                        pkg_name, package_type=release.package_type
-                    ).uninstall()
+        if release.install_method == "download":
+            try:
+                for file in release.download_files:
+                    if os.path.lexists(file):
+                        os.remove(file)
+            except OSError as exc:
+                logger.error(f"Failed to remove download: {exc}")
+                return
+        elif is_package(state, key):
+            if not release.package_type or release.package_type == "binary":
+                logger.warning(f"{name} was not installed as a package")
             else:
-                try:
-                    tool_path = f"{dest}/{name}"
-                    if os.path.exists(tool_path):
-                        os.remove(tool_path)
-                        logger.debug(f"Removed file: {tool_path}")
-                except OSError as e:
-                    logger.error(f"Failed to remove file: {e}")
-            break
+                pkg_name = release.package_name or name
+                if pkg_name != name:
+                    logger.debug(
+                        f"Using actual package name '{pkg_name}' instead of '{name}'"
+                    )
+                PackageInstaller(
+                    pkg_name, package_type=release.package_type
+                ).uninstall()
+        else:
+            try:
+                tool_path = f"{dest}/{name}"
+                if os.path.exists(tool_path):
+                    os.remove(tool_path)
+                    logger.debug(f"Removed file: {tool_path}")
+            except OSError as e:
+                logger.error(f"Failed to remove file: {e}")
+        break
 
     # Purge from state after successful uninstall
     if pop_key:

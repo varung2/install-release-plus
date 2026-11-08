@@ -31,6 +31,7 @@ repos:
 
 - name: aws-cli
   cmd: irp get mise@aws-cli -n aws -y
+  unsupported_bundle: true
   validate:
     cmd: aws --version
     grep: "aws-cli"

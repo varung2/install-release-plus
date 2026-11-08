@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -90,6 +91,7 @@ def store_release_assets(
 
     Used by the archive decision in ``irp get`` and tracked download refreshes.
     """
+    release = replace(release)
     name = f"{repo.repo_name.lower()}-download"
     key = f"{repo.repo_url}#{name}"
     cached = load_state(key)
@@ -150,18 +152,35 @@ def store_release_assets(
             with TemporaryDirectory(dir=temp) as staging_dir:
                 downloaded = download(asset.browser_download_url, staging_dir)
                 shutil.move(downloaded, ready / asset.name)
+        backup = Path(temp) / "backup"
+        backup.mkdir()
         for target in targets:
-            os.replace(ready / target.name, target)
-
-    release.name = name
-    release.assets = assets
-    release.install_method = "download"
-    release.download_dir = str(directory)
-    release.download_file = asset_file or None
-    release.download_files = list(dict.fromkeys([*previous_files, *map(str, targets)]))
-    release.hold_update = hold
-    if repo.info:
-        release.description = repo.info.description
-    save_state(key, release)
+            if target.exists():
+                shutil.copy2(target, backup / target.name)
+        replaced = []
+        try:
+            for target in targets:
+                os.replace(ready / target.name, target)
+                replaced.append(target)
+            release.name = name
+            release.assets = assets
+            release.install_method = "download"
+            release.download_dir = str(directory)
+            release.download_file = asset_file or None
+            release.download_files = list(
+                dict.fromkeys([*previous_files, *map(str, targets)])
+            )
+            release.hold_update = hold
+            if repo.info:
+                release.description = repo.info.description
+            save_state(key, release)
+        except Exception:
+            for target in reversed(replaced):
+                saved = backup / target.name
+                if saved.exists():
+                    os.replace(saved, target)
+                else:
+                    target.unlink(missing_ok=True)
+            raise
     logger.info(f"Tracked download: {name} {release.tag_name} at {directory}")
     return release

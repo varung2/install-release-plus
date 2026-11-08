@@ -6,6 +6,8 @@ import glob
 import os
 import platform
 import re
+import shlex
+from pathlib import Path
 
 from magic.compat import detect_from_filename
 
@@ -66,9 +68,8 @@ def _install_binary(source: str, dest: str, name: str = "", local: bool = True) 
         logger.error(f"Unsupported platform: {system}")
         return False
 
-    prefix = "" if local else "sudo "
     target = f"{dest}/{name}" if name else dest
-    cmd = f"{prefix}install {source} {target}"
+    cmd = shlex.join([*(["sudo"] if not local else []), "install", source, target])
 
     logger.info(cmd)
     out = sh(cmd)
@@ -144,6 +145,18 @@ def install_bin(
 
     if len(bin_files) != 1:
         logger.error(f"Expected a single binary, found: {bin_files}")
+        return False
+
+    # A launcher plus bundled shared libraries is not a standalone executable
+    # (for example, AWS CLI's PyInstaller distribution). Keep the archive instead.
+    parent = Path(bin_files[0]).parent
+    if any(
+        p.is_file() and (p.name.endswith((".so", ".dylib", ".dll")) or ".so." in p.name)
+        for p in parent.rglob("*")
+    ):
+        logger.error(
+            "Shared-library bundles are unsupported; keep the archive as a tracked download instead."
+        )
         return False
 
     return _install_binary(source=bin_files[0], dest=dest, name=name or "", local=local)

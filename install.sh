@@ -8,6 +8,7 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [[ -n "${BASH_SOURCE[0]:-}" ]] || die "Run install.sh from a local checkout, not through a pipe."
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+install_dir="${IRP_BIN_DIR:-$HOME/bin}"
 [[ -f "$project_dir/pyproject.toml" && -f "$project_dir/cli/__main__.py" ]] ||
   die "The local checkout must contain pyproject.toml and cli/__main__.py."
 
@@ -24,15 +25,15 @@ built_binary="$project_dir/dist/InstallReleasePlus"
 
 # Replace the installed binary only after a successful build and smoke check.
 # Stage in the destination directory so the final rename stays on one filesystem.
-mkdir -p "$HOME/bin"
-install_tmp="$(mktemp "$HOME/bin/.irp-install.XXXXXX")"
+mkdir -p "$install_dir"
+install_tmp="$(mktemp "$install_dir/.irp-install.XXXXXX")"
 trap 'rm -f -- "$install_tmp"' EXIT
 install -m755 "$built_binary" "$install_tmp"
-mv -f -- "$install_tmp" "$HOME/bin/irp"
+mv -f -- "$install_tmp" "$install_dir/irp"
 
-printf '\nInstalled local build: %s/bin/irp\n' "$HOME"
+printf '\nInstalled local build: %s/irp\n' "$install_dir"
 printf 'Build artifact: %s\n' "$built_binary"
 printf '\nTo use it in your current Bash/Zsh terminal, run:\n'
-printf '  export PATH="$HOME/bin:$PATH"\n'
+printf '  export PATH=%q:"$PATH"\n' "$install_dir"
 printf '  hash -r\n'
 printf '  irp --help\n'

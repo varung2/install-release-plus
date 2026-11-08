@@ -38,6 +38,8 @@ def local_build(tmp_path):
         "    binary = root / 'dist/InstallReleasePlus'\n"
         "    binary.write_text('#!/bin/sh\\nexit 0\\n')\n"
         "    binary.chmod(0o755)\n"
+        "    if (root / 'mutate-input').exists():\n"
+        "        (root / 'InstallRelease/module.py').write_text('# Changed during compilation\\n')\n"
     )
     uv.chmod(0o755)
     for name in ("cc", "patchelf"):
@@ -70,6 +72,15 @@ def test_build_records_freshness_from_another_directory(local_build):
     assert result.returncode == 0, result.stderr
     assert (root / "dist/.irp-build.json").is_file()
     assert run("--check").returncode == 0
+
+
+def test_inputs_changed_during_compilation_are_not_marked_current(local_build):
+    root, run = local_build
+    (root / "mutate-input").touch()
+    result = run()
+    assert result.returncode != 0
+    assert "Build inputs changed during compilation" in result.stderr
+    assert not (root / "dist/.irp-build.json").exists()
 
 
 @pytest.mark.parametrize(

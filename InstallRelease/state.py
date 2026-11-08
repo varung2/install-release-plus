@@ -2,6 +2,7 @@ import dataclasses
 import json
 import os
 import platform
+import tempfile
 
 from InstallRelease.utils import EnhancedJSONEncoder, FilterDataclass, logger
 
@@ -56,8 +57,20 @@ class State:
                         self.state[k] = FilterDataclass(_s[k], obj=self.obj)
 
     def save(self):
-        with open(self.state_file, "w") as f:
-            json.dump(self.state, f, cls=EnhancedJSONEncoder)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                dir=os.path.dirname(os.path.abspath(self.state_file)),
+                prefix=".irp-state-",
+                delete=False,
+            ) as f:
+                temporary = f.name
+                json.dump(self.state, f, cls=EnhancedJSONEncoder)
+            os.replace(temporary, self.state_file)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
 
     def get(self, key: str) -> dict:
         return self.state.get(key)  # type: ignore

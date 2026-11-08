@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from InstallRelease import cli, cli_interact
 from InstallRelease import download as downloads
+from InstallRelease import state as state_module
 from InstallRelease.config import cache
 from InstallRelease.providers.git import main as git_main
 from InstallRelease.providers.git.schemas import Release, ReleaseAssets, RepositoryInfo
@@ -348,3 +349,76 @@ def test_get_tracked_archive_upgrade_does_not_ask_for_action(
     cli_interact.upgrade(name="skills-download", skip_prompt=True)
     assert cache.state[KEY].tag_name == "v2"
     assert not archive_installer
+
+
+@pytest.mark.parametrize(
+    "failure", ["later_transfer", "replacement", "state_write", "state_replace"]
+)
+def test_late_failure_restores_files_memory_and_json(
+    environment, monkeypatch, tmp_path, failure
+):
+    downloads.download_release(URL, prompt=False, all_assets=True)
+    previous = cache.state[KEY]
+    previous_json = (tmp_path / "state.json").read_bytes()
+    old_files = {Path(p): Path(p).read_bytes() for p in previous.download_files}
+    environment.value = release("v2", names=("skills.zip", "new.txt", "notes.md"))
+    original_replace = downloads.os.replace
+    original_download = downloads.download
+
+    def replace(source, target):
+        if (
+            failure == "replacement"
+            and Path(source).parent.name == "ready"
+            and Path(target).name == "notes.md"
+        ):
+            raise OSError("injected replacement failure")
+        if failure == "state_replace" and Path(source).name.startswith(".irp-state-"):
+            raise OSError("injected state replacement failure")
+        return original_replace(source, target)
+
+    def transfer(url, at):
+        if failure == "later_transfer" and url.endswith("new.txt"):
+            raise OSError("injected second transfer failure")
+        return original_download(url, at)
+
+    def write(*args, **kwargs):
+        raise OSError("injected state write failure")
+
+    monkeypatch.setattr(downloads.os, "replace", replace)
+    monkeypatch.setattr(downloads, "download", transfer)
+    if failure == "state_write":
+        monkeypatch.setattr(state_module.json, "dump", write)
+    with pytest.raises(OSError, match="injected"):
+        downloads.download_release(URL, prompt=False, all_assets=True)
+    assert cache.state[KEY] is previous
+    assert (tmp_path / "state.json").read_bytes() == previous_json
+    assert all(path.read_bytes() == data for path, data in old_files.items())
+    assert not (tmp_path / "default/new.txt").exists()
+    assert not list((tmp_path / "default").glob(".ir-download-*"))
+    assert not list(tmp_path.glob(".irp-state-*"))
+
+
+def test_initial_state_save_failure_leaves_no_download(
+    environment, monkeypatch, tmp_path
+):
+    def fail():
+        raise OSError("state unavailable")
+
+    monkeypatch.setattr(cache, "save", fail)
+    with pytest.raises(OSError):
+        downloads.download_release(URL, prompt=False, all_assets=True)
+    assert KEY not in cache.state
+    assert list((tmp_path / "default").iterdir()) == []
+    assert not (tmp_path / "state.json").exists()
+
+
+def test_atomic_state_save_preserves_valid_json_on_serialization_error(
+    environment, tmp_path
+):
+    downloads.download_release(URL, prompt=False, all_assets=True)
+    old = (tmp_path / "state.json").read_bytes()
+    cache.state["unserializable"] = object()
+    with pytest.raises(TypeError):
+        cache.save()
+    assert (tmp_path / "state.json").read_bytes() == old
+    assert not list(tmp_path.glob(".irp-state-*"))

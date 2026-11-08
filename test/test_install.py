@@ -5,6 +5,8 @@ import subprocess
 import pytest
 import yaml
 
+pytestmark = pytest.mark.live
+
 CONTAINER = "ir-ubuntu"
 
 
@@ -35,7 +37,9 @@ def _is_container_running(name: str) -> bool:
 def ensure_container():
     """Ensure the Docker test container is running before tests."""
     if not _is_container_running(CONTAINER):
-        subprocess.run(["bash", "setup.sh", "ubuntu"], check=True)
+        subprocess.run(
+            ["bash", "setup.sh", "ubuntu"], cwd=os.path.dirname(__file__), check=True
+        )
     assert _is_container_running(CONTAINER), f"Container '{CONTAINER}' is not running"
 
 
@@ -47,6 +51,9 @@ def test_get(repo):
     """Install a tool and validate it runs correctly."""
     # Install
     stdout, stderr, rc = docker_exec(CONTAINER, repo["cmd"])
+    if repo.get("unsupported_bundle"):
+        assert "shared-library bundles are unsupported" in (stdout + stderr).lower()
+        return
     assert rc == 0, (
         f"Install failed for {repo['name']}: stdout={stdout}, stderr={stderr}"
     )

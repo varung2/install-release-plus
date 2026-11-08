@@ -13,8 +13,17 @@ from InstallRelease.providers.git.schemas import Release
 
 def save_state(key: str, release: Release) -> None:
     """Persist *release* under *key* and flush the cache to disk."""
+    existed = key in cache.state
+    previous = cache.state.get(key)
     cache.set(key, release)
-    cache.save()
+    try:
+        cache.save()
+    except Exception:
+        if existed:
+            cache.set(key, previous)
+        else:
+            cache.pop(key)
+        raise
 
 
 def load_state(key: str) -> Release | None:

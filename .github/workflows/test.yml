@@ -1,10 +1,12 @@
 name: Test CLI
 
 on:
-  # pull_request:
-  #   branches:
-  #     - main
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -13,24 +15,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
+      # Dependency acquisition is separate from the disconnected test runtime.
+      - name: Prepare test image
+        run: docker build -f test/images/offline/Dockerfile -t irp-offline-tests .
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Lint without network access
+        run: docker run --rm --network none --entrypoint /app/.venv/bin/python irp-offline-tests -m ruff check .
 
-      - name: Install dependencies
-        run: uv sync --all-groups --dev
+      - name: Run offline suite
+        run: docker run --rm --network none irp-offline-tests
 
-      - name: Ruff check
-        run: uv run ruff check .
-
-      - name: Setup Task
-        uses: arduino/setup-task@v2
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Test CLI
-        run: task test -- py
+      - name: Build and test standalone binary without network access
+        run: |
+          docker run --rm --network none --entrypoint bash irp-offline-tests -ec '
+            ./build.sh
+            .venv/bin/python -m pytest -q test --compiled -m compiled
+          '

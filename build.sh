@@ -86,6 +86,7 @@ uv run --no-sync python -m nuitka \
   --standalone \
   --onefile \
   --include-package=rich \
+  --include-distribution-metadata=InstallReleasePlus \
   --follow-imports \
   --output-dir="$project_dir/dist" \
   --output-filename=InstallReleasePlus \
@@ -97,4 +98,3 @@ bold "Checking the compiled executable ..."
 "$built_binary" --help >/dev/null
 build_state record "$build_fingerprint"
 printf 'Build complete: %s\n' "$built_binary"
-

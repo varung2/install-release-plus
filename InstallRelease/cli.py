@@ -108,16 +108,20 @@ def get(
             url, tag_name = url.rsplit(":", 1)
             break
 
-    _get(
-        url,
-        version=tag_name,
-        asset_file=asset_file,
-        prompt=not approve,
-        name=name,
-        pkg=pkg,
-        hold=bool(tag_name),
-        docker_opts=docker_opts,
-    )
+    try:
+        _get(
+            url,
+            version=tag_name,
+            asset_file=asset_file,
+            prompt=not approve,
+            name=name,
+            pkg=pkg,
+            hold=bool(tag_name),
+            docker_opts=docker_opts,
+        )
+    except (ValueError, OSError) as exc:
+        logger.error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @app.command()
@@ -139,7 +143,11 @@ def upgrade(
     | Upgrade all installed CLI tools from their repositories
     """
     setLogger(quiet, debug)
-    _upgrade(name=name, force=force, skip_prompt=skip_prompt, packages_only=pkg)
+    try:
+        _upgrade(name=name, force=force, skip_prompt=skip_prompt, packages_only=pkg)
+    except ValueError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @app.command()
@@ -181,7 +189,11 @@ def rm(
     """
     setLogger(debug=debug)
 
-    remove(name)
+    try:
+        remove(name)
+    except ValueError as exc:
+        logger.error(str(exc))
+        raise typer.Exit(1) from exc
 
 
 @app.command(name="config")
