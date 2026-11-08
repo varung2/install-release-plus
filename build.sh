@@ -73,6 +73,11 @@ if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1 && ! comm
 fi
 
 cd -- "$project_dir"
+compiler_options=(--show-scons)
+if [[ -n "${IRP_BUILD_JOBS:-}" ]]; then
+  [[ "$IRP_BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || die "IRP_BUILD_JOBS must be a positive integer."
+  compiler_options+=("--jobs=$IRP_BUILD_JOBS")
+fi
 build_fingerprint="$(build_state fingerprint)"
 bold "Preparing dependencies for the local checkout ..."
 # Dependencies may be fetched, but the IRP source and executable always come from
@@ -87,6 +92,7 @@ uv run --no-sync python -m nuitka \
   --onefile \
   --include-package=rich \
   --include-distribution-metadata=InstallReleasePlus \
+  "${compiler_options[@]}" \
   --follow-imports \
   --output-dir="$project_dir/dist" \
   --output-filename=InstallReleasePlus \

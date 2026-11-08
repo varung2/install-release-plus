@@ -1,0 +1,85 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Test CLI]
+    types: [completed]
+    branches: [sync/upstream]
+
+permissions:
+  contents: read
+
+# Serialize sync and merge jobs: a completed CI run must not race a branch update.
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    steps:
+      - name: Create repository-scoped App token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Checkout trusted main branch
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - name: Merge upstream into sync branch and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          UPSTREAM_REPOSITORY: ${{ vars.UPSTREAM_REPOSITORY || 'Rishang/install-release' }}
+          UPSTREAM_BRANCH: ${{ vars.UPSTREAM_BRANCH }}
+        run: python3 .github/scripts/upstream_sync.py sync
+
+  merge:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    steps:
+      - name: Create repository-scoped App token
+        id: app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      # workflow_run has credentials: never check out or execute PR code here.
+      - name: Checkout trusted merge script
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Verify successful CI and merge the tested PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: python3 .github/scripts/upstream_sync.py merge
