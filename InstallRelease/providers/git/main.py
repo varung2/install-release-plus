@@ -162,8 +162,8 @@ def _show_release_assets(release: Release, toolname: str) -> dict[int, ReleaseAs
             {
                 "Asset ID": did,
                 "Filename": a.name,
-                "Size (MB)": a.size_mb(),
-                "Downloads": a.download_count,
+                "Size (MB)": "Unknown" if a.source_archive else a.size_mb(),
+                "Downloads": "Unknown" if a.source_archive else a.download_count,
             }
             for did, a in choices.items()
         ],
@@ -302,6 +302,11 @@ class GitInteractProvider(InteractProvider):
                 known_names=known_names,
             )
 
+        if not self.package_mode and not candidates[0].prerelease:
+            source = next((a for a in candidates[0].assets if a.source_archive), None)
+            if source is not None:
+                return source
+
         logger.error("No suitable release assets found")
         repo_name = self.repo.repo_url.rstrip("/").rsplit("/", 1)[-1]
         pprint(
@@ -328,8 +333,12 @@ class GitInteractProvider(InteractProvider):
                     "Name": toolname,
                     "Selected Item": candidate.name,
                     "Version": release.tag_name,
-                    "Size Mb": candidate.size_mb(),
-                    "Downloads": candidate.download_count,
+                    "Size Mb": "Unknown"
+                    if candidate.source_archive
+                    else candidate.size_mb(),
+                    "Downloads": "Unknown"
+                    if candidate.source_archive
+                    else candidate.download_count,
                 }
             ],
             title=f"🚀 Install: {toolname}",
@@ -377,7 +386,11 @@ class GitInteractProvider(InteractProvider):
                 str(installed) if effective_pkg == "AppImage" else None
             )
         else:
-            extract_url(candidate.browser_download_url, temp_dir)
+            extract_url(
+                candidate.browser_download_url,
+                temp_dir,
+                filename=candidate.name if candidate.source_archive else "",
+            )
             release.assets = [candidate]
             mkdir(self.destination)
             if not install_bin(

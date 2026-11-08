@@ -31,6 +31,7 @@ class ReleaseAssets:
     size: int = 0
     state: str = ""
     updated_at: str = ""
+    source_archive: bool = False
 
     def size_mb(self) -> float:
         return round(self.size / 1_000_000, 2)

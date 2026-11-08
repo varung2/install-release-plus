@@ -88,6 +88,24 @@ class GitHubInfo(RepoInfo):
                     for a in r.get("assets", [])
                     if isinstance(a, dict)
                 ]
+                for field, name, content_type in (
+                    ("tarball_url", "source.tar.gz", "application/gzip"),
+                    ("zipball_url", "source.zip", "application/zip"),
+                ):
+                    url = r.get(field)
+                    if (
+                        isinstance(url, str)
+                        and url
+                        and not any(a.name == name for a in assets_list)
+                    ):
+                        assets_list.append(
+                            ReleaseAssets(
+                                name=name,
+                                browser_download_url=url,
+                                content_type=content_type,
+                                source_archive=True,
+                            )
+                        )
                 self.response.append(
                     Release(
                         url=self.repo_url,

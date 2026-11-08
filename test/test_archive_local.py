@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tarfile
 import threading
+import zipfile
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,10 +66,16 @@ def local_release(monkeypatch, tmp_path):
                         "published_at": payload.get(
                             "published", "2026-01-01T00:00:00Z"
                         ),
-                        "assets": [
+                        **{
+                            field: f"{base}/{field}/{payload.get('tag', 'v1')}"
+                            for field in payload.get("source_urls", [])
+                        },
+                        "assets": []
+                        if payload.get("source_only")
+                        else [
                             {
                                 "id": 1,
-                                "name": "tool.tar.gz",
+                                "name": payload.get("asset_name", "tool.tar.gz"),
                                 "size": len(payload["archive"]),
                                 "browser_download_url": f"{base}/tool.tar.gz",
                             }
@@ -77,6 +84,10 @@ def local_release(monkeypatch, tmp_path):
                 ).encode()
             elif self.path == "/tool.tar.gz":
                 data = payload["archive"]
+            elif self.path == f"/tarball_url/{payload.get('tag', 'v1')}":
+                data = payload["archive"]
+            elif self.path == f"/zipball_url/{payload.get('tag', 'v1')}":
+                data = payload["zip"]
             else:
                 self.send_error(404)
                 return
@@ -125,6 +136,137 @@ def test_real_http_archive_can_be_kept_byte_for_byte(local_release):
     assert not (destination / "tool").exists()
     assert cache.state[f"{REPOSITORY}#tool-download"].install_method == "download"
     assert payload["requests"].count("/tool.tar.gz") == 1
+
+
+@pytest.mark.parametrize(
+    ("filename", "asset_id", "field"),
+    [("source.tar.gz", "1", "tarball_url"), ("source.zip", "2", "zipball_url")],
+)
+@pytest.mark.parametrize("explicit_file", [False, True])
+def test_generated_sources_download_upgrade_and_remove(
+    local_release, tmp_path, filename, asset_id, field, explicit_file
+):
+    payload, default, _, _ = local_release
+
+    def source_bytes(text):
+        buffer = io.BytesIO()
+        if field == "zipball_url":
+            with zipfile.ZipFile(buffer, "w") as archive:
+                archive.writestr("owner-tool-commit/skills/SKILL.md", text)
+        else:
+            with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+                member = tarfile.TarInfo("owner-tool-commit/skills/SKILL.md")
+                member.size = len(text)
+                archive.addfile(member, io.BytesIO(text))
+        return buffer.getvalue()
+
+    expected = source_bytes(b"skill instructions")
+    payload.update(
+        source_only=True,
+        source_urls=["tarball_url", "zipball_url"],
+        zip=expected,
+        archive=expected,
+    )
+    custom = tmp_path / "kept sources"
+    args = ["get", REPOSITORY, "-o", str(custom)]
+    if explicit_file:
+        args += ["--file", filename]
+    runner = CliRunner()
+    result = runner.invoke(
+        cli.app, args, input=f"{'y' if explicit_file else asset_id}\n2\ny\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert "source.tar.gz" in result.output and "source.zip" in result.output
+    assert "Unknown" in result.output
+    assert (custom / filename).read_bytes() == expected
+    assert list(custom.iterdir()) == [custom / filename]
+    assert not default.exists()
+    key = f"{REPOSITORY}#tool-download"
+    assert cache.state[key].download_file == filename
+    assert cache.state[key].tag_name == "v1"
+    assert payload["requests"].count(f"/{field}/v1") == 1
+
+    expected = source_bytes(b"updated skill instructions")
+    payload.update(
+        tag="v2", published="2026-02-01T00:00:00Z", zip=expected, archive=expected
+    )
+    result = runner.invoke(cli.app, ["upgrade", "tool-download", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert cache.state[key].tag_name == "v2"
+    assert payload["requests"].count(f"/{field}/v2") == 1
+    assert (custom / filename).read_bytes() == expected
+    result = runner.invoke(cli.app, ["rm", "tool-download"])
+    assert result.exit_code == 0, result.output
+    assert not (custom / filename).exists()
+    assert key not in cache.state
+
+
+def test_generated_sources_do_not_change_uploaded_binary_default(local_release):
+    payload, destination, _, binary = local_release
+    payload["source_urls"] = ["tarball_url", "zipball_url"]
+    result = CliRunner().invoke(cli.app, ["get", REPOSITORY], input="y\n1\ny\n")
+    assert result.exit_code == 0, result.output
+    assert "source.tar.gz" in result.output and "source.zip" in result.output
+    assert (destination / "tool").read_bytes() == binary
+    assert "/tool.tar.gz" in payload["requests"]
+    assert not any("ball_url/" in path for path in payload["requests"])
+
+
+def test_generated_tarball_can_install_an_executable(local_release):
+    payload, destination, _, binary = local_release
+    payload.update(source_only=True, source_urls=["tarball_url"])
+    result = CliRunner().invoke(cli.app, ["get", REPOSITORY], input="y\n1\ny\n")
+    assert result.exit_code == 0, result.output
+    installed = destination / "tool"
+    assert installed.read_bytes() == binary
+    subprocess.run([str(installed)], check=True)
+    assert cache.state[f"{REPOSITORY}#tool"].install_method == "binary"
+
+
+def test_generated_sources_preserve_native_package_selection(
+    local_release, monkeypatch
+):
+    payload, _, _, _ = local_release
+    payload.update(asset_name="tool.deb", source_urls=["tarball_url", "zipball_url"])
+    monkeypatch.setattr(git_main, "os_package_type", "deb")
+    provider = git_main.GitInteractProvider(github.GitHubInfo(REPOSITORY))
+    selected = provider.select(provider.resolve())
+    assert selected.name == "tool.deb"
+    assert not selected.source_archive
+
+
+def test_generated_source_can_override_uploaded_asset_and_cancel(local_release):
+    payload, destination, _, _ = local_release
+    payload["source_urls"] = ["tarball_url", "zipball_url"]
+    result = CliRunner().invoke(cli.app, ["get", REPOSITORY], input="2\n2\nn\n")
+    assert result.exit_code == 0, result.output
+    assert not destination.exists()
+    assert not cache.state
+    assert not any("ball_url/" in path for path in payload["requests"])
+    assert "/tool.tar.gz" not in payload["requests"]
+
+
+def test_generated_source_filename_collision_keeps_uploaded_asset(local_release):
+    payload, destination, _, _ = local_release
+    payload.update(asset_name="source.tar.gz", source_urls=["tarball_url"])
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--file", "source.tar.gz"], input="y\n2\ny\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert (destination / "source.tar.gz").read_bytes() == payload["archive"]
+    assert "/tool.tar.gz" in payload["requests"]
+    assert "/tarball_url/v1" not in payload["requests"]
+
+
+@pytest.mark.parametrize("field", ["tarball_url", "zipball_url"])
+def test_generated_source_is_available_when_only_one_url_exists(local_release, field):
+    payload, _, _, _ = local_release
+    payload.update(source_only=True, source_urls=[field])
+    releases = github.GitHubInfo(REPOSITORY).release(tag_name="v1")
+    assert len(releases[0].assets) == 1
+    assert releases[0].assets[0].source_archive
+    assert releases[0].assets[0].browser_download_url.endswith(f"/{field}/v1")
+    assert "/repos/offline/tool/releases/tags/v1" in payload["requests"]
 
 
 def test_real_http_archive_installs_and_runs_executable(local_release):

@@ -132,7 +132,7 @@ def store_release_assets(
                     "Repository": repo.repo_url,
                     "Version": release.tag_name,
                     "Selected file": asset.name,
-                    "Size (MB)": asset.size_mb(),
+                    "Size (MB)": "Unknown" if asset.source_archive else asset.size_mb(),
                 }
                 for asset in assets
             ],
