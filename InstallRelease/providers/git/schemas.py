@@ -53,6 +53,7 @@ class Release:
     )  # "deb", "rpm", "AppImage", "binary"
     install_method: str | None = field(default="binary")  # binary, package, download
     package_name: str | None = field(default=None)
+    install_path: str | None = None
     download_dir: str | None = None
     download_files: list[str] = field(default_factory=list)
     # None means all uploaded assets; a string selects an exact filename.

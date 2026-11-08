@@ -54,11 +54,12 @@ def setLogger(quite: bool | None = None, debug: bool | None = None) -> None:
         logger.setLevel(logging.ERROR)
 
 
-if os.environ.get("IR_DEBUG", "").lower() == "true":
+# Keep the upstream variable as a fallback for existing environments.
+if os.environ.get("IRP_DEBUG", os.environ.get("IR_DEBUG", "")).lower() == "true":
     setLogger(debug=True)
 
 app = typer.Typer(
-    help="InstallReleasePlus: GitHub / GitLab / Mise release installer based on your system (Linux/MacOS). Repo: https://github.com/varung2/InstallReleasePlus",
+    help="Install Release Plus: GitHub / GitLab / Mise release installer based on your system (Linux/MacOS). Repo: https://github.com/varung2/install-release-plus",
     pretty_exceptions_enable=False,
 )
 
@@ -86,7 +87,9 @@ def get(
         "--name",
         help="Custom name to save the tool as.",
     ),
-    approve: bool = typer.Option(False, "-y", help="Approve without prompt."),
+    approve: bool = typer.Option(
+        False, "-y", help="Approve installation and overwrites without prompt."
+    ),
     pkg: bool = typer.Option(
         False, "--pkg", help="Install as OS package (deb/rpm/appimage)."
     ),
@@ -229,7 +232,7 @@ def _config(
     ),
 ):
     """
-    | Set configs for Install-Release
+    | Set configs for Install Release Plus
     """
 
     setLogger(debug=debug)
@@ -260,7 +263,7 @@ def _config(
 @app.command()
 def state(debug: bool = __optionDebug):
     """
-    | Show the current stored state of Install-Release
+    | Show the current stored state of Install Release Plus
     """
     setLogger(debug=debug)
     show_state()
@@ -277,11 +280,11 @@ def pull(
     override: bool = typer.Option(
         False,
         "-O",
-        help="Override local tool version with remote InstallReleasePlus state version.",
+        help="Override local tool version with remote Install Release Plus state version.",
     ),
 ):
     """
-    | Install tools from the remote InstallReleasePlus state URL
+    | Install tools from the remote Install Release Plus state URL
     """
     setLogger(debug=debug)
 
@@ -307,14 +310,14 @@ def _hold(
 @app.command(name="me")
 def me(
     update: bool = typer.Option(
-        False, "--upgrade", "-U", help="Update the InstallReleasePlus tool."
+        False, "--upgrade", "-U", help="Update the Install Release Plus tool."
     ),
     version: bool = typer.Option(
-        False, "--version", help="Print version of the InstallReleasePlus tool."
+        False, "--version", help="Print version of the Install Release Plus tool."
     ),
 ):
     """
-    | Update the InstallReleasePlus tool.
+    | Update the Install Release Plus tool.
     """
 
     _v = install_release_version._local_version
@@ -325,7 +328,7 @@ def me(
         _name = os.path.basename(sys.argv[0])
         if not _name or _name.endswith(".py"):
             _name = "irp"
-        _cmd = f"{_name} get https://github.com/varung2/InstallReleasePlus -n {_name}"
+        _cmd = f"{_name} get https://github.com/varung2/install-release-plus -n {_name}"
         pprint(f"Running: {_cmd}")
 
         os.system(_cmd)
@@ -338,7 +341,7 @@ def me(
         pprint(_v)
     else:
         pprint(f"Version: {_v}")
-        pprint("Repo:    https://github.com/varung2/InstallReleasePlus")
+        pprint("Repo:    https://github.com/varung2/install-release-plus")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# InstallReleasePlus
+# Install Release Plus
 
 Install and update CLI tools from project releases, or keep release archives as
 tracked downloads, using `irp`.
@@ -44,7 +44,7 @@ shell's persistent `PATH` if needed.
 | `irp get <repo-url> --tag <tag> --file <filename>` | Choose a release and asset explicitly; both options are optional. |
 | `irp get <repo-url> --name <name>` | Choose a custom installation name. |
 | `irp get <repo-url> --pkg` | Install a supported OS package. |
-| `irp ls` | List tracked installations and downloads; add `--json` for JSON. |
+| `irp ls` | List tracked installations and downloads with their install paths; add `--json` for JSON. |
 | `irp info <name>` | Show a tracked item's details. |
 | `irp upgrade [name]` | Upgrade one item, or all eligible items. |
 | `irp rm <name>` | Remove an item and its tracking record. |
@@ -64,7 +64,7 @@ and uses the executable installation flow; choose archive tracking interactively
 
 ## Differences from upstream
 
-- The command is `irp`, and the project name is InstallReleasePlus.
+- The command is `irp`, and the project name is Install Release Plus.
 - `get` can keep an archive as a tracked download without extracting or installing
   an executable. There is no separate `download` command.
 - Local `build.sh` and `install.sh` compile and install this checkout.
@@ -75,7 +75,28 @@ This fork does not add separate storage and executable directories or symlink
 management. Executable installation remains focused on standalone binaries;
 application bundles requiring sibling libraries are unsupported. The internal
 `InstallRelease` package and existing state/config paths are retained to make
-upstream merges easier.
+upstream merges easier. These compatibility names are intentional; user-facing
+names use Install Release Plus and `irp`. Set `IRP_DEBUG=true` for debug logging
+(the upstream `IR_DEBUG` variable remains a fallback).
+
+New executable installations record their full path. For older records, `ls`
+marks paths derived from the current configuration as **inferred**. Downloads
+show their saved directory; OS packages show **System package manager** because
+their files may span several directories. JSON output adds `install_path` and
+`path_inferred`.
+
+**Name collisions:** before downloading a binary or pulling a Docker image, `irp`
+compares existing and proposed names, paths, repositories, tags, assets, and
+settings. Overwriting requires confirmation, defaulting to **No**. `get -y`
+explicitly approves overwrites after showing the comparison. Matching tracked
+releases at an existing destination are skipped, even with `-y`; Docker images
+also require matching digests. `upgrade --force` can request a reinstall.
+
+Successful replacement removes previous binary tracking records for that
+destination. Untracked files show unknown release details. Symlinks and
+directories are rejected. Use `--name` to choose a distinct executable name.
+Tracked downloads retain their separate file-ownership checks; native package
+conflicts are handled by the system package manager.
 
 ## Tests
 

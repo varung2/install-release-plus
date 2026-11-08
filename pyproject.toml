@@ -32,11 +32,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/varung2/InstallReleasePlus"
-Documentation = "https://github.com/varung2/InstallReleasePlus"
-Repository = "https://github.com/varung2/InstallReleasePlus"
-Issues = "https://github.com/varung2/InstallReleasePlus/issues"
-Changelog = "https://github.com/varung2/InstallReleasePlus/releases"
+Homepage = "https://github.com/varung2/install-release-plus"
+Documentation = "https://github.com/varung2/install-release-plus"
+Repository = "https://github.com/varung2/install-release-plus"
+Issues = "https://github.com/varung2/install-release-plus/issues"
+Changelog = "https://github.com/varung2/install-release-plus/releases"
 
 
 [dependency-groups]

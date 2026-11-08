@@ -25,15 +25,15 @@ def test_me_upgrade_keeps_running_binary_name(monkeypatch):
     for argv0, expected in [
         (
             "/home/u/bin/irp",
-            "irp get https://github.com/varung2/InstallReleasePlus -n irp",
+            "irp get https://github.com/varung2/install-release-plus -n irp",
         ),
         (
             "InstallReleasePlus",
-            "InstallReleasePlus get https://github.com/varung2/InstallReleasePlus -n InstallReleasePlus",
+            "InstallReleasePlus get https://github.com/varung2/install-release-plus -n InstallReleasePlus",
         ),
         (
             "/src/InstallRelease/cli.py",
-            "irp get https://github.com/varung2/InstallReleasePlus -n irp",
+            "irp get https://github.com/varung2/install-release-plus -n irp",
         ),
     ]:
         ran = []

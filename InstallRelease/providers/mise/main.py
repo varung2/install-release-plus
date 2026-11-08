@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -10,6 +11,7 @@ import requests
 
 from InstallRelease.config import config, dest
 from InstallRelease.helper import extract_url, install_bin, save_state
+from InstallRelease.helper.collision import confirm_binary_install
 from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
 from InstallRelease.providers.git.schemas import Release, ReleaseAssets
 from InstallRelease.providers.mise.registry import (
@@ -243,14 +245,9 @@ class MiseInteractProvider(InteractProvider):
             decision = self.prompt(toolname, asset)
             if decision != "y":
                 return
-            pprint("\n[magenta]Downloading...[/magenta]")
 
-        # Step 4
-        at = TemporaryDirectory(prefix=f"dn_{toolname}_")
-        if not self.install(asset, toolname=toolname, temp_dir=at.name, local=local):
-            return
-
-        # Step 5
+        # Prepare the proposed record before downloading so collisions can stop
+        # without touching either the executable or its tracking record.
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         release_asset = ReleaseAssets(
             name=asset.name,
@@ -272,8 +269,18 @@ class MiseInteractProvider(InteractProvider):
             published_at=now_str,
             assets=[release_asset],
             description=asset.description or "Installed via mise/aqua registry",
+            install_path=os.path.abspath(os.path.join(dest, toolname)),
         )
         release.hold_update = hold
 
         state_key = f"{PROVIDER_STATE_KEY_PREFIXES['mise']}{self.toolname}#{toolname}"
+        if not confirm_binary_install(
+            state_key, release, prompt=prompt, force=bool(kwargs.get("force"))
+        ):
+            return
+        if prompt:
+            pprint("\n[magenta]Downloading...[/magenta]")
+        with TemporaryDirectory(prefix=f"dn_{toolname}_") as temp:
+            if not self.install(asset, toolname=toolname, temp_dir=temp, local=local):
+                return
         self.save_state(state_key, release)

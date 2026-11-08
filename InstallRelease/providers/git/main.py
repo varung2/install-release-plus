@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import platform
 import sys
+from dataclasses import replace
 from tempfile import TemporaryDirectory
 from typing import Any, cast
 
@@ -17,6 +19,7 @@ from InstallRelease.helper import (
     load_state,
     save_state,
 )
+from InstallRelease.helper.collision import confirm_binary_install
 from InstallRelease.helper.install import is_archive_asset
 from InstallRelease.helper.release_scorer import PACKAGE_ALIASES, PENALTY_EXTENSIONS
 from InstallRelease.pkgs.main import PackageInstaller
@@ -361,19 +364,24 @@ class GitInteractProvider(InteractProvider):
                 )
             download(candidate.browser_download_url, temp_dir)
             pkg_installer = PackageInstaller(package_type=effective_pkg, name=toolname)
-            if not pkg_installer.install(source=temp_dir):
+            installed = pkg_installer.install(source=temp_dir)
+            if not installed:
                 logger.error(f"Failed to install {toolname} as {effective_pkg} package")
                 return False
             release.assets = [candidate]
             release.package_type = effective_pkg
             release.install_method = "package"
             release.package_name = pkg_installer.name
+            release.install_path = (
+                str(installed) if effective_pkg == "AppImage" else None
+            )
         else:
             extract_url(candidate.browser_download_url, temp_dir)
             release.assets = [candidate]
             mkdir(dest)
             if not install_bin(src=temp_dir, dest=dest, local=local, name=toolname):
                 return False
+            release.install_path = os.path.abspath(os.path.join(dest, toolname))
         return True
 
     def save_state(self, key: str, result: Release) -> None:
@@ -473,9 +481,29 @@ class GitInteractProvider(InteractProvider):
                 typer.echo(f"Path: {dest}")
                 if not typer.confirm("Install its executable?", default=True):
                     return
-            pprint("\n[magenta]Downloading...[/magenta]")
+        # Check the final selected asset, including interactive ID overrides.
+        effective_pkg = detect_package_type_from_asset_name(asset.name) or (
+            self.package_type if self.package_mode else None
+        )
+        if not effective_pkg:
+            release = self._selected_release
+            if release is None:
+                return
+            proposed = replace(
+                release,
+                assets=[asset],
+                install_method="binary",
+                install_path=os.path.abspath(os.path.join(dest, toolname)),
+                hold_update=hold,
+            )
+            if not confirm_binary_install(
+                state_key, proposed, prompt=prompt, force=bool(kwargs.get("force"))
+            ):
+                return
 
         # Step 4: install
+        if prompt:
+            pprint("\n[magenta]Downloading...[/magenta]")
         with TemporaryDirectory(prefix=f"dn_{self.repo.repo_name}_") as tmp:
             if not self.install(asset, toolname=toolname, temp_dir=tmp, local=local):
                 raise ValueError(

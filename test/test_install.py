@@ -7,7 +7,7 @@ import yaml
 
 pytestmark = pytest.mark.live
 
-CONTAINER = "ir-ubuntu"
+CONTAINER = "irp-ubuntu"
 
 
 def load_config() -> dict:

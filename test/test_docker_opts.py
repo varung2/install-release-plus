@@ -46,6 +46,7 @@ def test_docker_interact_provider_get_passes_docker_opts(monkeypatch, tmp_path):
     key = "docker:library/alpine#alpine-custom"
     assert key in saved_state
     assert saved_state[key].docker_opts == "-v /host/path:/container/path:ro"
+    assert saved_state[key].install_path == str(wrapper_path)
 
 
 def test_docker_interact_provider_empty_docker_opts_removes(monkeypatch, tmp_path):

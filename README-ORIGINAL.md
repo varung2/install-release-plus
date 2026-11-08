@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./.github/images/banner.png" alt="InstallReleasePlus — easily install any release" width="100%" />
+  <img src="./.github/images/banner.svg" alt="Install Release Plus — easily install any release" width="100%" />
 </p>
 <p align="center">
   <em>CLI to install any CLI</em>
@@ -14,19 +14,19 @@
 
 
 
-**InstallReleasePlus** is a fork of [install-release](https://github.com/Rishang/install-release). The internal `InstallRelease` package and existing state/config paths are preserved to simplify upstream merges.
+**Install Release Plus** is a fork of [install-release](https://github.com/Rishang/install-release). The internal `InstallRelease` package and existing state/config paths are preserved to simplify upstream merges.
 
-**InstallReleasePlus** gives you the `irp` command to install and keep single-binary CLI tools updated on Linux, macOS, and WSL. It works with GitHub, GitLab, and Forgejo-powered Codeberg releases, and supports mise/aqua registry entries and Docker images.
+**Install Release Plus** gives you the `irp` command to install and keep single-binary CLI tools updated on Linux, macOS, and WSL. It works with GitHub, GitLab, and Forgejo-powered Codeberg releases, and supports mise/aqua registry entries and Docker images.
 
 This can be any tool you want to install, which is pre-compiled for your device and present on a supported provider.
 
 
-<a href="#getting-started"><img src=".github/images/demo.gif" alt="irp CLI demo: install gron from GitHub, glab from GitLab and terraform from the mise registry, list and remove tools" width="100%" /></a>
+See the [quickstart](README.md#quickstart) for the current `irp` workflow.
 
 > INFO: It's mainly for installing tools that are not directly available officially by package managers like `apt, yum, pacman, brew` etc.
 
 <p align="center">
-  <img src=".github/images/flow.png" alt="How it works" width="800">
+  <img src=".github/images/flow.svg" alt="How it works" width="800">
 </p>
 
 ## Highlights
@@ -143,7 +143,7 @@ sources, build script, dependency files, platform, and binary content still matc
 Added or deleted source files also trigger rebuilding. An existing executable
 without a fingerprint is rebuilt once. Use `./build.sh --check` to check freshness
 without compiling (exit status 0 means current; 1 means missing or stale).
-Dependency setup and compiler tooling may require network access; InstallReleasePlus
+Dependency setup and compiler tooling may require network access; Install Release Plus
 itself is always built from this checkout, including your uncommitted changes.
 Run `./install.sh` again after source changes; it rebuilds automatically when needed.
 
@@ -345,14 +345,37 @@ Usage: irp [OPTIONS] COMMAND [ARGS]...
     ls       | List all installed CLI tools
     info     | Show info about an installed CLI tool
     rm       | Remove any installed CLI tool
-    config   | Set configs for Install-Release
-    state    | Show the current stored state of Install-Release
-    pull     | Install tools from the remote InstallReleasePlus state URL
+    config   | Set configs for Install Release Plus
+    state    | Show the current stored state of Install Release Plus
+    pull     | Install tools from the remote Install Release Plus state URL
     hold     | Keep an installed CLI tool's updates on hold.
-    me       | Update the Install-Release tool.
+    me       | Update the Install Release Plus tool.
 ```
 
 For sub-command help use: `irp <sub-command> --help`
+
+### Existing installations and name collisions
+
+Before downloading a binary (including mise installs) or pulling an image for a
+Docker wrapper, `irp` checks existing names and destination files. A comparison
+shows the existing and proposed name, install path, source repository, release
+tag, asset filename/URL/size/ID/update time, prerelease status, update hold, and
+Docker options. Changed fields are marked. Metadata for untracked files is
+shown as unknown.
+
+The overwrite prompt defaults to **No**. Declining leaves files and state
+unchanged. `irp get -y` explicitly approves overwrites after displaying the
+comparison; it still skips a release whose tracked identity and destination
+match. This compares recorded release metadata, not the executable's bytes.
+Docker tags additionally require matching local and remote digests to count as
+identical. Missing executables can be reinstalled. `irp upgrade --force` allows
+an intentional refresh, and upgrade's existing approval applies to replacements.
+
+Previous binary records owning an overwritten destination are removed only
+after a successful installation, when the new record is saved. Symlinks and
+non-regular destination files are rejected. Use `--name` for a different command
+name. Archive downloads keep their file-ownership safeguards, and native package
+conflicts remain the responsibility of the system package manager.
 
 Example: `irp get --help`
 
@@ -528,7 +551,7 @@ Archive action (1/2/n) [1]:
 Both choices show the resolved tag, selected file, and destination for final
 confirmation. Choosing 2 preserves the archive without extracting or installing
 it, and tracks it as `<repository-name>-download`. The choice applies to the
-final selected Asset ID, including when you override IR's suggested asset.
+final selected Asset ID, including when you override irp's suggested asset.
 Standalone executables and native packages retain their existing flow.
 `irp get -y` keeps the existing executable installation behavior without asking
 for an archive action. Keeping an archive requires the interactive choice above.
@@ -544,7 +567,7 @@ irp get https://github.com/owner/project --file skills.zip
 irp get https://github.com/owner/project --tag v1.2.0 --file skills.zip
 ```
 
-Choose an archive Asset ID (or accept IR's suggestion), choose **2**, then review
+Choose an archive Asset ID (or accept irp's suggestion), choose **2**, then review
 and confirm the download. Omitting `--tag` resolves the latest release, honoring
 prerelease configuration. An explicit tag holds updates, as with executable
 installations. GitHub's automatically generated source archives are not included.
@@ -576,7 +599,7 @@ When filenames change across versions, previous files are retained and tracked.
 `irp rm` removes tracked files, preserving the directory and unrelated contents.
 Use `irp ls --json` to inspect download paths and file lists.
 
-When kept as downloads, archives remain untouched: IR does not extract them,
+When kept as downloads, archives remain untouched: irp does not extract them,
 set up symlinks, or install skills into an application. Installing application
 bundles, sibling libraries/assets, or multiple entry points remains unsupported.
 The archive choice works with GitHub, GitLab, Codeberg, and the supported
@@ -584,7 +607,7 @@ self-hosted Git repository providers; it does not apply to mise or Docker.
 
 ### Install specific release asset from GitHub, GitLab, or Codeberg releases 🔦
 
-In rare cases where InstallReleasePlus does not automatically find the correct release file for your system, you can manually specify the release file name. There are two ways to do this:
+In rare cases where Install Release Plus does not automatically find the correct release file for your system, you can manually specify the release file name. There are two ways to do this:
 
 ##### Method 1: Interactive Selection (Recommended)
 
@@ -641,7 +664,7 @@ Example: Installing the bore tool from GitHub with the release file name `bore-v
 - These keywords are stored in the state file to match the correct release file during future tool upgrades
 - This ensures consistent upgrades to the same release variant
 
-> Note: If `InstallReleasePlus` fails to identify the correct release package for your system, please raise a GitHub issue to help improve the tool.
+> Note: If Install Release Plus fails to identify the correct release package for your system, please raise a GitHub issue to help improve the tool.
 
 #### List installed tools 📋
 
@@ -836,7 +859,7 @@ possible so upstream changes can be merged without renaming imports. After
 renaming your GitHub repository, update `origin` and add the upstream remote once:
 
 ```bash
-git remote set-url origin git@github.com:varung2/InstallReleasePlus.git
+git remote set-url origin git@github.com:varung2/install-release-plus.git
 git remote add upstream https://github.com/Rishang/install-release.git
 ```
 

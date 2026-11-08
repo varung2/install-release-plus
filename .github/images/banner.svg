@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">Install Release Plus</title>
+  <desc id="desc">Install CLI tools and track release archives with irp.</desc>
+  <rect width="1200" height="320" rx="20" fill="#111827"/>
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <text x="600" y="125" fill="#60a5fa" font-size="58" font-weight="700">Install Release Plus</text>
+    <text x="600" y="190" fill="#f9fafb" font-size="28">Install CLI tools. Track release archives.</text>
+    <text x="600" y="255" fill="#93c5fd" font-size="26" font-family="monospace">irp get &lt;repo-url&gt;</text>
+  </g>
+</svg>

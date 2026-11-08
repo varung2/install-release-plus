@@ -33,7 +33,7 @@ def local_build(tmp_path):
         "import os, sys\n"
         "from pathlib import Path\n"
         "if 'nuitka' in sys.argv:\n"
-        "    root = Path(os.environ['IR_TEST_PROJECT'])\n"
+        "    root = Path(os.environ['IRP_TEST_PROJECT'])\n"
         "    (root / 'dist').mkdir(exist_ok=True)\n"
         "    binary = root / 'dist/InstallReleasePlus'\n"
         "    binary.write_text('#!/bin/sh\\nexit 0\\n')\n"
@@ -49,7 +49,7 @@ def local_build(tmp_path):
     env = {
         **os.environ,
         "PATH": f"{commands}:{os.environ['PATH']}",
-        "IR_TEST_PROJECT": str(root),
+        "IRP_TEST_PROJECT": str(root),
     }
 
     def run(*args):

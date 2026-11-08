@@ -8,6 +8,7 @@ from typing import Any
 
 from InstallRelease.config import dest
 from InstallRelease.helper import load_state, save_state
+from InstallRelease.helper.collision import confirm_binary_install
 from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
 from InstallRelease.providers.docker.config import WRAPPER_TEMPLATE
 from InstallRelease.providers.docker.schemas import DockerImage
@@ -214,19 +215,8 @@ class DockerInteractProvider(InteractProvider):
             decision = self.prompt(toolname, image)
             if decision != "y":
                 return
-            pprint("\n[magenta]Pulling image...[/magenta]")
 
-        # Step 4
-        if not self.install(
-            image,
-            toolname=toolname,
-            temp_dir="",
-            local=local,
-            docker_opts=docker_opts,
-        ):
-            return
-
-        # Step 5
+        # Prepare the wrapper record before pulling or writing any files.
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         release = Release(
             url=f"docker@{image.cli_image}",  # user-facing format shown by irp ls
@@ -239,6 +229,32 @@ class DockerInteractProvider(InteractProvider):
             docker_opts=docker_opts,
         )
         # Pin hold_update for any non-latest tag so upgrade skips them
+        release.install_path = os.path.abspath(os.path.join(dest, toolname))
         release.hold_update = image.tag != "latest"
 
+        def same_content() -> bool:
+            # Tags can move, so matching wrapper metadata alone cannot prove
+            # that the image is unchanged.
+            local_digest = _get_local_digest(image.cli_ref)
+            remote_digest = _get_remote_digest(image.cli_ref)
+            matches = bool(local_digest and local_digest == remote_digest)
+            if not matches:
+                pprint(f"Existing image digest: {local_digest or 'Unknown'}")
+                pprint(f"Proposed image digest: {remote_digest or 'Unknown'}")
+            return matches
+
+        if not confirm_binary_install(
+            state_key,
+            release,
+            prompt=prompt,
+            force=bool(kwargs.get("force")),
+            same_content=same_content,
+        ):
+            return
+        if prompt:
+            pprint("\n[magenta]Pulling image...[/magenta]")
+        if not self.install(
+            image, toolname=toolname, temp_dir="", local=local, docker_opts=docker_opts
+        ):
+            return
         self.save_state(state_key, release)

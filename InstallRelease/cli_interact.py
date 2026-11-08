@@ -3,6 +3,7 @@ import os
 import threading
 
 from rich.console import Console
+from rich.markup import escape
 
 from InstallRelease.config import (  # noqa: F401
     cache,
@@ -12,6 +13,7 @@ from InstallRelease.config import (  # noqa: F401
     pre_release_enabled,
 )
 from InstallRelease.download import download_release
+from InstallRelease.pkgs.app_images import AppImage
 from InstallRelease.pkgs.main import PackageInstaller
 from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
 from InstallRelease.providers.docker.main import (
@@ -64,6 +66,7 @@ def get(
     pkg: bool = False,
     hold: bool = False,
     docker_opts: str | None = None,
+    force: bool = False,
 ) -> None:
     """Resolve URL to provider and install the tool."""
     state_info()
@@ -99,6 +102,7 @@ def get(
         name=name,
         hold=hold,
         docker_opts=docker_opts,
+        force=force,
     )
 
 
@@ -254,6 +258,7 @@ def upgrade(
             name=name,
             pkg=pkg_mode,
             docker_opts=docker_opts,
+            force=force,
         )
 
 
@@ -281,9 +286,25 @@ def list_install(
         release = state[key]
         if hold_update and not release.hold_update:
             continue
+        name = irKey.parse(key).name
+        path_inferred = False
+        if release.install_method == "download":
+            install_path = release.download_dir
+        elif release.install_path:
+            install_path = release.install_path
+        elif release.is_package and release.package_type == "AppImage":
+            install_path = str(AppImage(release.package_name or name).appimage_path)
+            path_inferred = True
+        elif release.is_package:
+            install_path = None
+        else:
+            # Older state did not record destinations. Do not present the
+            # current configured directory as a known historical location.
+            install_path = os.path.abspath(os.path.join(dest, name))
+            path_inferred = True
         rows.append(
             {
-                "name": irKey.parse(key).name,
+                "name": name,
                 "version": release.tag_name,
                 "type": "download"
                 if release.install_method == "download"
@@ -293,6 +314,8 @@ def list_install(
                 "description": release.description or "",
                 "download_dir": release.download_dir,
                 "download_files": release.download_files,
+                "install_path": install_path,
+                "path_inferred": path_inferred,
             }
         )
 
@@ -307,6 +330,11 @@ def list_install(
             "Version": f"{dim}{r['version']}",
             "Type": f"[cyan]{r['type']}" if r["type"] != "binary" else r["type"],
             "Hold": "[yellow]yes" if r["hold"] else "",
+            "Install path": escape(
+                r["install_path"]
+                or ("System package manager" if r["type"] != "download" else "Unknown")
+            )
+            + (" (inferred)" if r["path_inferred"] else ""),
             "Url": f"{dim}{r['url']}",
             "Description": f"[dim yellow]{r['description']}",
         }
@@ -323,6 +351,7 @@ def list_install(
             # Description absorb leftover space and truncate first.
             "Name": {"min_width": min(name_width, 30)},
             "Version": {"min_width": 7},
+            "Install path": {"no_wrap": False, "overflow": "fold", "ratio": 3},
             "Url": {"overflow": "ellipsis", "ratio": 2},
             "Description": {"overflow": "ellipsis", "ratio": 3},
         },
@@ -400,7 +429,7 @@ def remove(name: str) -> None:
                 ).uninstall()
         else:
             try:
-                tool_path = f"{dest}/{name}"
+                tool_path = release.install_path or f"{dest}/{name}"
                 if os.path.exists(tool_path):
                     os.remove(tool_path)
                     logger.debug(f"Removed file: {tool_path}")

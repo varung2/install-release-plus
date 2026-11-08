@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tarfile
 import threading
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -132,7 +133,88 @@ def test_real_http_archive_installs_and_runs_executable(local_release):
     subprocess.run([str(installed)], check=True)
     assert not (destination / "tool.tar.gz").exists()
     assert cache.state[f"{REPOSITORY}#tool"].install_method == "binary"
+    assert cache.state[f"{REPOSITORY}#tool"].install_path == str(installed)
+    saved = json.loads(Path(cache.state_file).read_text())
+    assert saved[f"{REPOSITORY}#tool"]["install_path"] == str(installed)
     assert payload["requests"].count("/tool.tar.gz") == 1
+
+
+def test_binary_install_confirms_before_overwriting_existing_destination(local_release):
+    _, destination, _, binary = local_release
+    destination.mkdir(exist_ok=True)
+    installed = destination / "tool"
+    installed.write_bytes(b"existing unrelated executable")
+    result = CliRunner().invoke(
+        cli.app, ["get", REPOSITORY, "--file", "tool.tar.gz"], input="y\n1\ny\ny\n"
+    )
+    assert result.exit_code == 0, result.output
+    assert installed.read_bytes() == binary
+    assert "Installation collision" in result.output
+    assert "Unknown" in result.output
+
+
+@pytest.mark.parametrize("answer", ["n\n", "\n"])
+def test_binary_collision_decline_never_downloads_or_changes_state(
+    local_release, answer
+):
+    payload, destination, _, _ = local_release
+    destination.mkdir(exist_ok=True)
+    installed = destination / "tool"
+    installed.write_bytes(b"existing executable")
+    result = CliRunner().invoke(
+        cli.app,
+        ["get", REPOSITORY, "--file", "tool.tar.gz"],
+        input="y\n1\ny\n" + answer,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Installation cancelled" in result.output
+    assert installed.read_bytes() == b"existing executable"
+    assert "/tool.tar.gz" not in payload["requests"]
+    assert not cache.state
+
+
+def test_exact_reinstall_skips_transfer_even_with_yes(local_release):
+    payload, destination, _, _ = local_release
+    runner = CliRunner()
+    args = ["get", REPOSITORY, "--file", "tool.tar.gz", "-y"]
+    assert runner.invoke(cli.app, args).exit_code == 0
+    before = Path(cache.state_file).read_bytes()
+    payload["requests"].clear()
+    result = runner.invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+    assert "already exists" in result.output
+    assert "/tool.tar.gz" not in payload["requests"]
+    assert Path(cache.state_file).read_bytes() == before
+    assert (destination / "tool").is_file()
+
+
+@pytest.mark.parametrize("succeeds", [True, False])
+def test_replacement_changes_owner_only_after_success(local_release, succeeds):
+    payload, destination, make_archive, _ = local_release
+    runner = CliRunner()
+    args = ["get", REPOSITORY, "--file", "tool.tar.gz", "-y"]
+    assert runner.invoke(cli.app, args).exit_code == 0
+    key = f"{REPOSITORY}#tool"
+    old = cache.state.pop(key)
+    old_key = "https://github.com/previous/tool#tool"
+    cache.state[old_key] = replace(
+        old, url="https://github.com/previous/tool", tag_name="v0"
+    )
+    cache.save()
+    before_state = Path(cache.state_file).read_bytes()
+    before_binary = (destination / "tool").read_bytes()
+    if not succeeds:
+        payload["archive"] = make_archive(bundle=True)
+    result = runner.invoke(cli.app, args)
+    if succeeds:
+        assert result.exit_code == 0, result.output
+        assert set(cache.state) == {key}
+        assert set(json.loads(Path(cache.state_file).read_text())) == {key}
+    else:
+        assert result.exit_code == 1, result.output
+        assert set(cache.state) == {old_key}
+        assert Path(cache.state_file).read_bytes() == before_state
+        assert (destination / "tool").read_bytes() == before_binary
 
 
 def test_shared_library_bundle_is_rejected_without_state(local_release, caplog):

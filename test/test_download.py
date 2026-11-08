@@ -123,7 +123,7 @@ def test_failed_transfer_preserves_old_files_and_state(
         downloads.download_release(URL, prompt=False, all_assets=True)
     assert (tmp_path / "default/skills.zip").read_text() == "asset from v1"
     assert (tmp_path / "state.json").read_text() == old_state
-    assert not list((tmp_path / "default").glob(".ir-download-*"))
+    assert not list((tmp_path / "default").glob(".irp-download-*"))
 
 
 def test_upgrade_reuses_output_and_selection(environment, monkeypatch, tmp_path):
@@ -394,7 +394,7 @@ def test_late_failure_restores_files_memory_and_json(
     assert (tmp_path / "state.json").read_bytes() == previous_json
     assert all(path.read_bytes() == data for path, data in old_files.items())
     assert not (tmp_path / "default/new.txt").exists()
-    assert not list((tmp_path / "default").glob(".ir-download-*"))
+    assert not list((tmp_path / "default").glob(".irp-download-*"))
     assert not list(tmp_path.glob(".irp-state-*"))
 
 

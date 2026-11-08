@@ -75,10 +75,10 @@ fi
 cd -- "$project_dir"
 build_fingerprint="$(build_state fingerprint)"
 bold "Preparing dependencies for the local checkout ..."
-# Dependencies may be fetched, but the IR source and executable always come from
+# Dependencies may be fetched, but the IRP source and executable always come from
 # this checkout. The lockfile is left unchanged.
 uv sync --locked --dev
-uv run --no-sync python -c 'import magic; magic.from_buffer(b"install-release")' ||
+uv run --no-sync python -c 'import magic; magic.from_buffer(b"install-release-plus")' ||
   die "Install the libmagic runtime library with your OS package manager first."
 
 bold "Compiling $project_dir into dist/InstallReleasePlus ..."

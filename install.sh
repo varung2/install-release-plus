@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install dist/InstallReleasePlus as ~/bin/irp, building this checkout only when needed.
-# Usage: /path/to/InstallReleasePlus/install.sh
+# Usage: /path/to/install-release-plus/install.sh
 set -euo pipefail
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }

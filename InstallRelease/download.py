@@ -145,7 +145,7 @@ def store_release_assets(
     directory.mkdir(parents=True, exist_ok=True)
     # Stage on the destination filesystem. Failed transfers leave previous files
     # and release state intact; nothing in the archive is executed or extracted.
-    with TemporaryDirectory(prefix=".ir-download-", dir=directory) as temp:
+    with TemporaryDirectory(prefix=".irp-download-", dir=directory) as temp:
         ready = Path(temp) / "ready"
         ready.mkdir()
         for asset in assets:
