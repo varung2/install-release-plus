@@ -43,6 +43,7 @@ shell's persistent `PATH` if needed.
 | `irp get <repo-url>` | Select and install a release asset, or keep an archive. |
 | `irp get <repo-url> --tag <tag> --file <filename>` | Choose a release and asset explicitly; both options are optional. |
 | `irp get <repo-url> --name <name>` | Choose a custom installation name. |
+| `irp get <repo-url> --output <directory>` | Use a destination for this invocation only (`-o`); the configured default is unchanged. |
 | `irp get <repo-url> --pkg` | Install a supported OS package. |
 | `irp ls` | List tracked installations and downloads with their install paths; add `--json` for JSON. |
 | `irp info <name>` | Show a tracked item's details. |
@@ -61,6 +62,18 @@ Kept archives remain intact and are tracked as `<repo>-download` by default.
 Use the same `ls`, `info`, `upgrade`, and `rm` commands to manage them. Upgrades
 look for the same asset filename in the newer release. `get -y` skips prompts
 and uses the executable installation flow; choose archive tracking interactively.
+
+To keep an archive in a different directory:
+
+```bash
+irp get https://github.com/owner/project --output ~/downloads/releases
+# Select an archive, then choose "Keep archive as a tracked download".
+```
+
+`--output` also works for binary installs, mise tools, and Docker wrappers.
+Paths may be relative or use `~`; the saved location is reused for upgrades and
+removal. Native packages (including AppImages) do not support this option.
+Remove an existing tracked item before relocating it to a different directory.
 
 ## Differences from upstream
 

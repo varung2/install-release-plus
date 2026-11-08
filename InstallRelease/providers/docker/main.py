@@ -9,7 +9,11 @@ from typing import Any
 from InstallRelease.config import dest
 from InstallRelease.helper import load_state, save_state
 from InstallRelease.helper.collision import confirm_binary_install
-from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
+from InstallRelease.providers.base import (
+    PROVIDER_STATE_KEY_PREFIXES,
+    InteractProvider,
+    output_directory,
+)
 from InstallRelease.providers.docker.config import WRAPPER_TEMPLATE
 from InstallRelease.providers.docker.schemas import DockerImage
 from InstallRelease.providers.git.schemas import Release
@@ -111,6 +115,7 @@ class DockerInteractProvider(InteractProvider):
 
     def __init__(self, image_ref: str) -> None:
         """Accept image_ref without the docker:// prefix, e.g. 'hashicorp/terraform:1.7.0'."""
+        self.destination = dest
         image, tag = _split_image_tag(image_ref)
         if "/" not in image:
             image = f"library/{image}"
@@ -138,6 +143,7 @@ class DockerInteractProvider(InteractProvider):
             data=[{"Tool": toolname, "Image": candidate.image, "Tag": candidate.tag}],
             title=f"Install {toolname} (via Docker)",
         )
+        pprint(f"Path: {self.destination}")
         pprint("[color(34)]Install selected tool [Y/n]: ", end="")
         return input().strip().lower() or "y"
 
@@ -158,8 +164,8 @@ class DockerInteractProvider(InteractProvider):
             logger.error(f"docker pull failed for {candidate.cli_ref}")
             return False
 
-        mkdir(dest)
-        script_path = os.path.join(dest, toolname)
+        mkdir(self.destination)
+        script_path = os.path.join(self.destination, toolname)
         entrypoint = _get_entrypoint(candidate.cli_ref)
         # Images without ENTRYPOINT need the command name prepended explicitly
         args = '"$@"' if entrypoint else f'{toolname} "$@"'
@@ -195,6 +201,7 @@ class DockerInteractProvider(InteractProvider):
         **kwargs: Any,
     ) -> None:
         """Orchestrate the full install flow: resolve -> select -> prompt -> install -> save."""
+        self.destination = output_directory(kwargs.get("output", ""), dest)
         toolname = name or self._image.name
 
         # Step 1
@@ -229,7 +236,7 @@ class DockerInteractProvider(InteractProvider):
             docker_opts=docker_opts,
         )
         # Pin hold_update for any non-latest tag so upgrade skips them
-        release.install_path = os.path.abspath(os.path.join(dest, toolname))
+        release.install_path = os.path.abspath(os.path.join(self.destination, toolname))
         release.hold_update = image.tag != "latest"
 
         def same_content() -> bool:

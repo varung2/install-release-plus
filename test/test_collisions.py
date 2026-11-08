@@ -59,6 +59,8 @@ def test_relevant_differences_require_default_no_confirmation(
         new.assets = [replace(old.assets[0], id=123)]
     elif change == "path":
         new.install_path = str(path.parent / "new/tool")
+        new.url = "https://github.com/bob/tool"
+        new_key = f"{new.url}#tool"
     elif change == "name":
         new_key = f"{old.url}#renamed"
     elif change == "hold":

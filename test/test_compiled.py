@@ -32,6 +32,7 @@ def test_standalone_identity_version_and_fork_url(tmp_path):
         if url.startswith("Repository, ")
     )
     assert "Usage: irp" in run("--help")
+    assert "--output" in run("get", "--help")
     assert run("me", "--version").strip() == metadata.version
     assert repo in run("me")
     result = subprocess.run(

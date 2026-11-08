@@ -15,7 +15,11 @@ from InstallRelease.config import (  # noqa: F401
 from InstallRelease.download import download_release
 from InstallRelease.pkgs.app_images import AppImage
 from InstallRelease.pkgs.main import PackageInstaller
-from InstallRelease.providers.base import PROVIDER_STATE_KEY_PREFIXES, InteractProvider
+from InstallRelease.providers.base import (
+    PROVIDER_STATE_KEY_PREFIXES,
+    InteractProvider,
+    output_directory,
+)
 from InstallRelease.providers.docker.main import (
     DockerInteractProvider,
 )
@@ -67,9 +71,16 @@ def get(
     hold: bool = False,
     docker_opts: str | None = None,
     force: bool = False,
+    output: str = "",
 ) -> None:
     """Resolve URL to provider and install the tool."""
     state_info()
+    if output and pkg:
+        raise ValueError(
+            "--output is not supported for native packages; their package manager controls installation paths."
+        )
+    if output:
+        output = output_directory(output, dest)
 
     # User-facing prefixes (typed by the user)
     # State-key prefixes (used internally by upgrade/pull_state)
@@ -103,6 +114,7 @@ def get(
         hold=hold,
         docker_opts=docker_opts,
         force=force,
+        output=output,
     )
 
 
@@ -259,6 +271,9 @@ def upgrade(
             pkg=pkg_mode,
             docker_opts=docker_opts,
             force=force,
+            output=os.path.dirname(state[k].install_path)
+            if not pkg_mode and state[k].install_path
+            else "",
         )
 
 

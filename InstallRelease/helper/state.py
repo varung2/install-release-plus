@@ -20,7 +20,7 @@ def save_state(key: str, release: Release) -> None:
     previous = cache.state.get(key)
     displaced = {}
     if release.install_method == "binary" and release.install_path:
-        path = os.path.abspath(release.install_path)
+        path = os.path.realpath(release.install_path)
         directory = os.path.dirname(path)
         displaced = {
             old_key: old

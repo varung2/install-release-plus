@@ -104,7 +104,7 @@ def store_release_assets(
     if cached and Path(cached.download_dir or "") != directory:
         raise ValueError(
             f"This download is tracked in {cached.download_dir}; "
-            "configure that path with irp config --path, or remove the download before relocating it"
+            "use --output with that directory, or remove the download before relocating it"
         )
     targets = []
     for asset in assets:
