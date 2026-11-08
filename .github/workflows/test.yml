@@ -1,6 +1,8 @@
 name: Test CLI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -8,12 +10,29 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BUILD_CONTAINER: irp-ci-build-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      # main runs populate a cache that subsequent PRs can restore. PR caches
+      # remain scoped to their merge ref under GitHub's normal cache rules.
+      - name: Restore compiler cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/nuitka
+          key: nuitka-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock', 'build.sh', 'test/images/offline/Dockerfile') }}-${{ github.sha }}
+          restore-keys: |
+            nuitka-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('uv.lock', 'build.sh', 'test/images/offline/Dockerfile') }}-
 
       # Dependency acquisition is separate from the disconnected test runtime.
       - name: Prepare test image
@@ -26,8 +45,23 @@ jobs:
         run: docker run --rm --network none irp-offline-tests
 
       - name: Build and test standalone binary without network access
+        timeout-minutes: 45
         run: |
-          docker run --rm --network none --entrypoint bash irp-offline-tests -ec '
+          mkdir -p "$GITHUB_WORKSPACE/.cache/nuitka"
+          docker run --rm --name "$BUILD_CONTAINER" --network none \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/.cache/nuitka,target=/nuitka-cache" \
+            -e NUITKA_CACHE_DIR=/nuitka-cache \
+            -e NUITKA_CACHE_DIR_CCACHE=/nuitka-cache/ccache \
+            -e CCACHE_DIR=/nuitka-cache/ccache \
+            -e CCACHE_BASEDIR=/app \
+            -e CCACHE_MAXSIZE=500M \
+            -e IRP_BUILD_JOBS=2 \
+            --entrypoint bash irp-offline-tests -ec '
+            trap "ccache --show-stats" EXIT
             ./build.sh
             .venv/bin/python -m pytest -q test --compiled -m compiled
           '
+
+      - name: Stop build container after failure or timeout
+        if: always()
+        run: docker rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true

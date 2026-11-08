@@ -128,6 +128,12 @@ Prerequisites on Linux/macOS/WSL:
 - The `libmagic` runtime library (`file-libs` on Fedora/RHEL, `libmagic` with Homebrew).
 - Optional: `ccache` to speed up subsequent builds.
 
+`build.sh` enables Nuitka's `--show-scons` output, so C compiler commands remain
+visible during long builds. The compiler can still spend time on an individual
+command without producing additional output. Optionally set `IRP_BUILD_JOBS`
+to a positive integer to limit parallel C compiler processes; local builds
+otherwise use Nuitka's default.
+
 From your local checkout, run:
 
 ```bash
@@ -177,6 +183,8 @@ network connections in the Python tests. It does not need Docker, GitHub tokens,
 a C compiler, or third-party downloads once the Python dependencies and system
 `libmagic` library are installed. Loopback sockets, subprocesses, Bash, and standard
 Unix utilities (`install`, `true`, etc.) must be permitted by the runner.
+Git is also required for local upstream-sync regression fixtures; these use
+temporary repositories and never contact GitHub.
 
 The compiled executable has a separate opt-in check for command identity, version
 metadata, and the configured fork URL:
@@ -885,3 +893,74 @@ Upgrades of kept archives restore the previous files and recorded version if a
 transfer, replacement, or JSON save fails. JSON writes use an atomic replacement.
 These guarantees cover handled failures, not an abrupt machine shutdown during
 multiple file replacements.
+
+### Automatic upstream synchronization
+
+`.github/workflows/sync-upstream.yml` checks upstream daily at **04:23 UTC** and
+supports **Actions → Sync upstream → Run workflow**. The workflow must first be
+merged into `main` for its schedule and CI-completion trigger to operate.
+
+Configure these repository-level Actions values under **Settings → Secrets and
+variables → Actions**:
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Variable | `APP_CLIENT_ID` | Your installed GitHub App's Client ID. |
+| Secret | `APP_PRIVATE_KEY` | Complete PEM private key, including BEGIN/END lines. |
+| Variable (optional) | `UPSTREAM_REPOSITORY` | Defaults to `Rishang/install-release`. |
+| Variable (optional) | `UPSTREAM_BRANCH` | Defaults to upstream's default branch. |
+
+The App needs **Contents** and **Pull requests** read/write permissions, plus
+**Workflows** write permission to import changes to `.github/workflows` files.
+Tokens are scoped to the current repository even if the App is installed across
+your account. No webhook server or Marketplace sync action is required.
+
+Use two rulesets targeting `main`:
+
+1. **Protect main:** require a PR, the `test` check from **Test CLI**, and an
+   up-to-date branch; block force pushes and deletion. Keep the bypass list empty.
+   Use zero required human approvals for unattended merging.
+2. **Linear history for regular changes:** require linear history only; allow
+   this App to bypass **For pull requests only**. Humans use rebase merges while
+   the App can preserve upstream ancestry with merge commits.
+
+Enable merge commits and rebase merging in repository settings; disable squash
+merging if rebase should be the only normal contribution method. Do not put the
+App on the CI ruleset's bypass list.
+
+The workflow fetches upstream, exits when it is already included in `main`, or
+merges it into the reserved `sync/upstream` branch. It reuses an open PR owned
+by this App, merges newer `main` changes into that branch as needed, and pushes
+without force. Conflicts stop the workflow and require manual resolution.
+
+After **Test CLI** completes successfully, the merge job verifies the App author,
+repository, branch, current PR SHA, workflow file, latest run attempt, and that
+the branch includes current `main`. It then requests a merge commit for that
+exact SHA using the App token. Other required checks and reviews remain enforced
+by GitHub. This uses a CI-completion job rather than GitHub's native auto-merge
+toggle, so the actual merge request uses the App's scoped bypass identity.
+
+The privileged merge job executes only the script checked out from `main`;
+it never executes code or consumes artifacts/caches from the PR. Failed,
+cancelled, stale, foreign, draft, or human-authored PRs are not merged. A manual
+sync also checks for an already successful run if its completion event was
+missed. If `main` has advanced, rerun **Sync upstream** to refresh the branch and
+CI. Failures are visible in Actions and its job summary. No release is published.
+
+### CI compilation progress and cache
+
+The **Test CLI** job runs on PRs, pushes to `main`, and manual dispatch. It has
+a 60-minute job timeout and a 45-minute standalone build/test step timeout.
+Superseded runs for the same PR/ref are cancelled, and cleanup stops a remaining
+build container after failure or timeout.
+
+`actions/cache` persists `.cache/nuitka`, mounted into the disconnected build
+container. Both Nuitka and ccache use that mount. Cache keys include runner OS,
+architecture, dependency/build inputs, and commit; matching prior input prefixes
+allow reuse across source changes. ccache is limited to 500 MB and prints hit/miss
+statistics when the build step exits. Runs on `main` populate a shared cache that
+other PRs can restore; PR-specific caches follow GitHub's normal cache isolation.
+A cold cache still requires full compilation, and compiler/image changes can
+cause misses. The network remains disabled for lint, tests, and compilation;
+image preparation and cache restore/save happen separately with network access.
+CI limits compilation to two parallel jobs to bound compiler memory use.

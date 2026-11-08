@@ -110,6 +110,10 @@ installed; it uses local fixtures and loopback connections. Compiled-binary and
 live integration tests are opt-in. See [extended documentation](README-ORIGINAL.md)
 for those commands, offline CI setup, providers, and configuration details.
 
+CI reuses a compiler cache, logs C compiler commands, and limits standalone
+compilation to 45 minutes. See [upstream sync setup](README-ORIGINAL.md#automatic-upstream-synchronization)
+for the scheduled App-authenticated PR and merge workflow.
+
 ## License
 
 GNU General Public License v3. See [LICENSE](LICENSE). Upstream attribution and
