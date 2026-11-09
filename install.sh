@@ -50,8 +50,8 @@ printf '  irp --help\n'
 
 if [[ "$shell_updates" == ask && -t 0 && -t 1 ]]; then
   answer=""
-  read -r -p 'Check for IRP updates when opening a shell (including SSH)? [Y/n] ' answer || true
-  case "$answer" in ""|y|Y|yes|YES) shell_updates=yes ;; esac
+  read -r -p 'Check for IRP updates when opening a shell (including SSH)? [y/N] ' answer || true
+  case "$answer" in y|Y|yes|YES) shell_updates=yes ;; esac
 fi
 if [[ "$shell_updates" == yes ]]; then
   python3 "$project_dir/scripts/shell_updates.py" "$install_dir/irp" "${SHELL:-}"
