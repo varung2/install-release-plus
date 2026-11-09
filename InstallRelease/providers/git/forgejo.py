@@ -83,7 +83,7 @@ class ForgejoInfo(GitHubInfo):
             logger.debug("Forgejo/Codeberg token not set")
 
         try:
-            response = requests.get(url, headers=headers, json=self.schemas)
+            response = requests.get(url, headers=headers, json=self.schemas, timeout=10)
             response.raise_for_status()
             data = response.json()
             self._check_api_error(data, "Forgejo")

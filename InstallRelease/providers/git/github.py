@@ -52,6 +52,7 @@ class GitHubInfo(RepoInfo):
                 headers=self.headers,
                 auth=auth,
                 json=self.schemas,
+                timeout=10,
             )
             response.raise_for_status()
             data = response.json()

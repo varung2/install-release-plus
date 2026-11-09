@@ -170,11 +170,11 @@ def ls(
     as_json: bool = typer.Option(
         False,
         "--json",
-        help="Print installed tools as JSON for scripting.",
+        help="Print installed tools and update status as JSON for scripting.",
     ),
 ):
     """
-    | List all installed CLI tools
+    | List installed tools and check for available release updates
     """
     list_install(hold_update=hold, as_json=as_json)
 

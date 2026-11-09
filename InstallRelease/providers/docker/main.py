@@ -27,6 +27,7 @@ def _get_local_digest(cli_ref: str) -> str:
         capture_output=True,
         text=True,
         check=False,
+        timeout=10,
     )
     raw = result.stdout.strip()
     # RepoDigest format: "image@sha256:abc123..." — extract the digest part
@@ -46,6 +47,7 @@ def _get_remote_digest(cli_ref: str) -> str:
         capture_output=True,
         text=True,
         check=False,
+        timeout=10,
     )
     for line in result.stdout.splitlines():
         if line.startswith("Digest:"):
@@ -54,8 +56,8 @@ def _get_remote_digest(cli_ref: str) -> str:
     return ""
 
 
-def needs_update(image: str, tag: str, force: bool = False) -> bool:
-    """Return True if the Docker image should be re-pulled.
+def needs_update(image: str, tag: str, force: bool = False) -> bool | None:
+    """Return whether the image should be re-pulled, or None if unavailable.
 
     Pinned (non-latest) tags never auto-upgrade unless --force.
     For latest: compares local RepoDigest against the remote manifest digest.
@@ -69,8 +71,8 @@ def needs_update(image: str, tag: str, force: bool = False) -> bool:
     if not local:
         return True  # not cached locally (or built locally) → pull
     remote = _get_remote_digest(cli_ref)
-    # unknown remote (registry error, rate limit, no network) → keep what we have
-    return bool(remote) and local != remote
+    # Unknown remote must not be presented as an up-to-date image.
+    return local != remote if remote else None
 
 
 def _get_entrypoint(cli_ref: str) -> list[str]:

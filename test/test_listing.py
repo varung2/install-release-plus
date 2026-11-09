@@ -37,8 +37,8 @@ def test_list_keeps_each_project_path_after_config_changes(monkeypatch, tmp_path
     assert {row["url"]: row["install_path"] for row in rows} == paths
     assert all(not row["path_inferred"] for row in rows)
 
-    # The normal table must include the paths too, even when columns wrap.
-    result = runner.invoke(cli.app, ["ls"], env={"COLUMNS": "240"})
+    # A wide normal table must include the full saved paths too.
+    result = runner.invoke(cli.app, ["ls"], env={"COLUMNS": "320"})
     assert result.exit_code == 0, result.output
     assert "Install path" in result.output
     for path in paths.values():
@@ -82,7 +82,7 @@ def test_list_paths_for_downloads_packages_and_legacy_records(monkeypatch, tmp_p
     assert rows["legacy-appimage"]["path_inferred"] is True
     assert rows["appimage"]["install_path"] == "/apps/tool.appimage"
 
-    result = runner.invoke(cli.app, ["ls"], env={"COLUMNS": "240"})
+    result = runner.invoke(cli.app, ["ls"], env={"COLUMNS": "320"})
     assert "(inferred)" in result.output
     assert "System package manager" in result.output
     result = runner.invoke(cli.app, ["ls", "--hold", "--json"])

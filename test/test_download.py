@@ -55,7 +55,7 @@ def environment(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(git_main, "get_repo_info", lambda url: repo)
     monkeypatch.setattr(git_main, "dest", str(tmp_path / "default"))
-    monkeypatch.setattr(cli_interact, "get_repo_info", lambda url: repo)
+    monkeypatch.setattr(cli_interact, "get_repo_info", lambda url, **kwargs: repo)
 
     def transfer(url, at):
         path = Path(at) / url.rsplit("/", 1)[-1]
