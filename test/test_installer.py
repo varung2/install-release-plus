@@ -226,7 +226,7 @@ def test_unsupported_shell_leaves_config_alone(installer):
     assert (destination / "irp").exists()
 
 
-@pytest.mark.parametrize("answer", ["y", ""])
+@pytest.mark.parametrize("answer", ["y", "", "n", "no", "N"])
 def test_interactive_installer_offers_hook_only_after_install(installer, answer):
     root, destination, _, _run = installer
     master, slave = pty.openpty()
@@ -261,7 +261,8 @@ def test_interactive_installer_offers_hook_only_after_install(installer, answer)
         assert output.index(b"Installed local build") < output.index(
             b"Check for IRP updates"
         )
-        assert (root.parent / ".bashrc").exists() == bool(answer)
+        assert b"[Y/n]" in output
+        assert (root.parent / ".bashrc").exists() == (answer in ("", "y"))
     finally:
         os.close(master)
         if slave is not None:
