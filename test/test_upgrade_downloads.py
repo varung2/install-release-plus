@@ -54,7 +54,7 @@ def two_projects(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli_interact,
         "get_repo_info",
-        lambda url: SimpleNamespace(repo_url=url, release=latest),
+        lambda url, **kwargs: SimpleNamespace(repo_url=url, release=latest),
     )
     calls = []
     monkeypatch.setattr(
@@ -105,7 +105,7 @@ def test_held_downloads_do_not_fetch_even_when_forced(two_projects, monkeypatch,
     monkeypatch.setattr(
         cli_interact,
         "get_repo_info",
-        lambda url: pytest.fail("Fetched a held download"),
+        lambda url, **kwargs: pytest.fail("Fetched a held download"),
     )
     cli_interact.upgrade(skip_prompt=True, force=force)
     assert not calls
@@ -117,7 +117,7 @@ def test_current_downloads_leave_files_and_state_unchanged(two_projects, monkeyp
     monkeypatch.setattr(
         cli_interact,
         "get_repo_info",
-        lambda url: SimpleNamespace(repo_url=url, release=lambda **kw: [tracked(url)]),
+        lambda url, **kwargs: SimpleNamespace(repo_url=url, release=lambda **kw: [tracked(url)]),
     )
     cli_interact.upgrade(skip_prompt=True)
     assert not calls
@@ -128,7 +128,7 @@ def test_current_downloads_leave_files_and_state_unchanged(two_projects, monkeyp
 def test_package_only_upgrade_skips_downloads(two_projects, monkeypatch):
     _, calls = two_projects
     monkeypatch.setattr(
-        cli_interact, "get_repo_info", lambda url: pytest.fail("Fetched non-package")
+        cli_interact, "get_repo_info", lambda url, **kwargs: pytest.fail("Fetched non-package")
     )
     cli_interact.upgrade(skip_prompt=True, packages_only=True)
     assert not calls

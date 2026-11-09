@@ -50,34 +50,41 @@ from InstallRelease.utils import (
 os_package_type = detect_package_type_from_os_release()
 
 
-def host_token(tokens: dict[str, str], host: str) -> str:
-    """Return the token for *host*, registering the host if it is new."""
-    if host not in tokens:
+def host_token(tokens: dict[str, str], host: str, register: bool = True) -> str:
+    """Return the token for *host*, optionally registering unknown hosts."""
+    if host not in tokens and register:
         tokens[host] = ""
         cache_config.save()
         logger.info(
             f"Registered new host '{host}', set a token with: irp config --host {host}"
         )
-    return tokens[host] or ""
+    return tokens.get(host) or ""
 
 
 _PROVIDER_CLASSES: dict[str, Any] = {
-    "github": (GitHubInfo, lambda cfg, url: cfg.token),
-    "gitlab": (GitlabInfo, lambda cfg, url: host_token(cfg.gitlab_token, GITLAB_HOST)),
+    "github": (GitHubInfo, lambda cfg, url, register=True: cfg.token),
+    "gitlab": (
+        GitlabInfo,
+        lambda cfg, url, register=True: host_token(
+            cfg.gitlab_token, GITLAB_HOST, register
+        ),
+    ),
     "codeberg": (
         ForgejoInfo,
-        lambda cfg, url: host_token(cfg.codeberg_token, CODEBERG_HOST),
+        lambda cfg, url, register=True: host_token(
+            cfg.codeberg_token, CODEBERG_HOST, register
+        ),
     ),
     "gitlab_self": (
         SelfHostedGitlabInfo,
-        lambda cfg, url: host_token(
-            cfg.gitlab_token, split_prefixed_url(url, "gitlab@")[0]
+        lambda cfg, url, register=True: host_token(
+            cfg.gitlab_token, split_prefixed_url(url, "gitlab@")[0], register
         ),
     ),
     "forgejo_self": (
         SelfHostedForgejoInfo,
-        lambda cfg, url: host_token(
-            cfg.codeberg_token, split_prefixed_url(url, "forgejo@")[0]
+        lambda cfg, url, register=True: host_token(
+            cfg.codeberg_token, split_prefixed_url(url, "forgejo@")[0], register
         ),
     ),
 }
@@ -87,8 +94,10 @@ def _appimage_ok() -> bool:
     return platform.system().lower() in PACKAGE_ALIASES.get("AppImage", [])
 
 
-def get_repo_info(repo_url: str, data: dict[str, Any] | None = None) -> RepoInfo:
-    """Factory: return the appropriate RepoInfo subclass for *repo_url*."""
+def get_repo_info(
+    repo_url: str, data: dict[str, Any] | None = None, *, read_only: bool = False
+) -> RepoInfo:
+    """Resolve a repository; read-only checks neither register hosts nor exit."""
     provider_name = Provider.resolve_provider(repo_url)
     try:
         if provider_name is None:
@@ -97,11 +106,15 @@ def get_repo_info(repo_url: str, data: dict[str, Any] | None = None) -> RepoInfo
                 "gitlab@<host>/<owner>/<repo>, forgejo@<host>/<owner>/<repo>."
             )
         cls, get_token = _PROVIDER_CLASSES[provider_name]
-        return cls(repo_url, data or {}, get_token(config, repo_url))
+        return cls(repo_url, data or {}, get_token(config, repo_url, not read_only))
     except (UnsupportedRepositoryError, ApiError) as e:
+        if read_only:
+            raise
         logger.error(str(e))
         sys.exit(1)
     except Exception as e:
+        if read_only:
+            raise
         logger.error(f"Unexpected error: {e}")
         sys.exit(1)
 

@@ -45,9 +45,9 @@ shell's persistent `PATH` if needed.
 | `irp get <repo-url> --name <name>` | Choose a custom installation name. |
 | `irp get <repo-url> --output <directory>` | Use a destination for this invocation only (`-o`); the configured default is unchanged. |
 | `irp get <repo-url> --pkg` | Install a supported OS package. |
-| `irp ls` | List tracked installations and downloads with their install paths; add `--json` for JSON. |
+| `irp ls` | List tracked items, install paths, and available updates; add `--json` for JSON. |
 | `irp info <name>` | Show a tracked item's details. |
-| `irp upgrade [name]` | Upgrade one item, or all eligible items. |
+| `irp upgrade [name]` | Preview old/new versions, then confirm before upgrading one item or all eligible items. |
 | `irp rm <name>` | Remove an item and its tracking record. |
 | `irp hold <name>` | Pause updates; use `irp hold --unset <name>` to resume. |
 | `irp config --path <directory>` | Set the default destination for installations and downloads. |
@@ -80,6 +80,18 @@ irp get https://github.com/owner/project --output ~/downloads/releases
 Paths may be relative or use `~`; the saved location is reused for upgrades and
 removal. Native packages (including AppImages) do not support this option.
 Remove an existing tracked item before relocating it to a different directory.
+
+`ls` checks release metadata on each run without downloading assets or changing
+tracking records. Updates appear beneath names; held items use the Hold column
+and skip checks. Failed checks show **Update check unavailable**. JSON includes
+`update_status` (`available`, `current`, `held`, or `unavailable`) and
+`latest_version` (null when not checked or unavailable). These checks require
+access to the release provider; Docker checks also require the Docker CLI.
+
+`upgrade` lists installed and available versions, item types, and source
+repositories before asking **Continue? [y/N]**. Nothing is downloaded or installed
+until confirmed; `--yes` skips confirmation. Native packages remain separate:
+use `irp upgrade --pkg`. Holds and prerelease preferences are respected.
 
 ## Differences from upstream
 

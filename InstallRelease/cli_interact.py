@@ -1,7 +1,11 @@
 import json
 import os
-import threading
+from contextlib import redirect_stdout
+from dataclasses import dataclass
+from io import StringIO
+from typing import Literal
 
+import typer
 from rich.console import Console
 from rich.markup import escape
 
@@ -131,122 +135,141 @@ def _matching_keys(state: TypeState, name: str | None) -> list[str]:
     return matches
 
 
+@dataclass(frozen=True)
+class UpdateCheck:
+    status: Literal["available", "current", "held", "unavailable"]
+    latest_version: str | None = None
+    url: str = ""
+
+
+def _check_updates(state: TypeState, force: bool = False) -> dict[str, UpdateCheck]:
+    """Resolve update metadata concurrently without changing installed state."""
+
+    def task(key: str) -> UpdateCheck:
+        release = state[key]
+        if release.hold_update:
+            return UpdateCheck("held")
+        try:
+            url = irKey.parse(key).url
+            if url.startswith(PROVIDER_STATE_KEY_PREFIXES["mise"]):
+                tool = url[len(PROVIDER_STATE_KEY_PREFIXES["mise"]) :]
+                versions = MiseInteractProvider(tool).resolve(
+                    pre_release=pre_release_enabled()
+                )
+                if not versions:
+                    return UpdateCheck("unavailable")
+                latest = versions[0]
+                available = force or latest != release.tag_name
+            elif url.startswith(PROVIDER_STATE_KEY_PREFIXES["docker"]):
+                image = url[len(PROVIDER_STATE_KEY_PREFIXES["docker"]) :]
+                available = docker_needs_update(image, release.tag_name, force=force)
+                if available is None:
+                    return UpdateCheck("unavailable")
+                latest = release.tag_name
+            else:
+                repo = get_repo_info(url, read_only=True)
+                releases = repo.release(pre_release=pre_release_enabled())
+                if not releases:
+                    return UpdateCheck("unavailable")
+                latest = releases[0].tag_name
+                available = force or releases[0].published_dt() > release.published_dt()
+                url = repo.repo_url
+            return UpdateCheck("available" if available else "current", latest, url)
+        except Exception as exc:
+            logger.debug("Update check failed for %s: %s", key, exc)
+            return UpdateCheck("unavailable")
+
+    # Providers may print diagnostics before reporting a failed request. Keep
+    # those out of JSON and show an explicit per-item status instead.
+    with redirect_stdout(StringIO()):
+        results = threads(task, data=state, max_workers=20)
+    return dict(zip(state, results, strict=True))
+
+
+def _release_type(release: Release) -> str:
+    return (
+        "download"
+        if release.install_method == "download"
+        else (release.package_type if release.is_package else "binary")
+    )
+
+
+def _upgrade_table(
+    state: TypeState, updates: dict[str, UpdateCheck], title: str
+) -> None:
+    show_table(
+        [
+            {
+                "Name": escape(irKey.parse(key).name),
+                "Installed": escape(state[key].tag_name),
+                "Available": escape(check.latest_version or "")
+                + (
+                    " (new image)"
+                    if key.startswith(PROVIDER_STATE_KEY_PREFIXES["docker"])
+                    else ""
+                ),
+                "Type": _release_type(state[key]),
+                "Source": escape(irKey.parse(key).url),
+            }
+            for key, check in updates.items()
+        ],
+        title=title,
+        no_wrap=False,
+    )
+
+
 def upgrade(
     force: bool = False,
     skip_prompt: bool = False,
     packages_only: bool = False,
     name: str | None = None,
 ) -> None:
-    """Check all installed tools for newer versions and upgrade them.
-
-    Phase 1: Concurrently fetch latest versions for all tools (git + mise).
-    Phase 2: Show pending upgrades, prompt user, then install sequentially.
-    """
+    """Show resolved upgrades and ask before downloading or installing assets."""
     state_info()
-
-    state: TypeState = cache.state
-    keys = _matching_keys(state, name)
-
-    # Collect upgrade candidates: full state key -> (url, new_version, is_package)
-    upgrades: dict[str, tuple[str, str, bool]] = {}
-    pkg_upgrades: set[str] = set()  # names only, for notification
-    _lock = threading.Lock()
-    _mise = PROVIDER_STATE_KEY_PREFIXES["mise"]
-    _docker = PROVIDER_STATE_KEY_PREFIXES["docker"]
-
-    def task(k: str) -> None:
-        """Fetch latest version for one tool and bucket it if newer."""
-        i = irKey.parse(k)
-        release = state[k]
-
-        if packages_only and not release.is_package:
-            return
-
-        if release.hold_update:
-            return
-
-        # ── mise tools ──────────────────────────────────────────────────────
-        if i.url.startswith(_mise):
-            toolname = i.url[len(_mise) :]
-            pprint(f"Fetching: [blue]mise@{toolname}[/blue]")
-            versions = MiseInteractProvider(toolname).resolve()
-            if versions and (force or versions[0] != state[k].tag_name):
-                with _lock:
-                    upgrades[k] = (i.url, versions[0], False)
-            return
-
-        # ── docker tools ─────────────────────────────────────────────────────
-        if i.url.startswith(_docker):
-            image_ref = i.url[len(_docker) :]
-            tag = state[k].tag_name
-            cli_image = (
-                image_ref[len("library/") :]
-                if image_ref.startswith("library/")
-                else image_ref
-            )
-            pprint(f"Checking: [blue]docker@{cli_image}:{tag}[/blue]")
-            if docker_needs_update(image_ref, tag, force=force):
-                with _lock:
-                    upgrades[k] = (i.url, tag, False)
-            return
-
-        # ── git tools ───────────────────────────────────────────────────────
-        repo = get_repo_info(i.url)
-        pprint(f"Fetching: {k}")
-        releases = repo.release(pre_release=pre_release_enabled())
-
-        if not releases:
-            logger.warning(f"No releases found for: {k}")
-            return
-
-        if releases[0].published_dt() > state[k].published_dt() or force:
-            with _lock:
-                if is_package(state, k) and not packages_only and not name:
-                    pkg_upgrades.add(i.name)
-                else:
-                    upgrades[k] = (
-                        repo.repo_url,
-                        releases[0].tag_name,
-                        is_package(state, k),
-                    )
-
-    # Phase 1: concurrent version checks
-    threads(task, data=keys, max_workers=20, return_result=False)
-
-    # Notify about package upgrades when not in --pkg mode
-    if not packages_only and pkg_upgrades:
-        pprint("\n[bold cyan]Following package can be upgraded.[/]\n")
-        pprint("[bold indian_red]" + " ".join(pkg_upgrades))
-        pprint(
-            "\n[bold white]To upgrade packages, run: [green]irp upgrade --pkg[/green][/]\n"
-        )
-
-    # Phase 2: prompt and install pending upgrades
-    if upgrades:
-        pprint("\n[bold magenta]Following tool will get upgraded.\n")
-        console.print("[bold yellow]" + " ".join(upgrades))
-        pprint("\n[bold blue]Upgrade these tools, (Y/n):", end=" ")
-
-        if not skip_prompt:
-            r = input()
-            if r.lower() != "y":
-                return
-
-        if packages_only or (name and any(v[2] for v in upgrades.values())):
-            pprint("\n\n[bold]Need sudo access for installing packages...[/]")
-            result = sh("sudo -v", interactive=True)
-            if result.returncode != 0:
-                pprint("[bold red]Failed to acquire sudo. Aborting.[/]")
-                return
-            pprint()
-    else:
-        pprint("[bold green]All tools are onto latest version")
+    state = cache.state
+    selected = {
+        key: state[key]
+        for key in _matching_keys(state, name)
+        if not packages_only or state[key].is_package
+    }
+    pprint("Checking for release updates…")
+    checks = _check_updates(selected, force=force)
+    upgrades = {
+        key: check
+        for key, check in checks.items()
+        if check.status == "available"
+        and (not state[key].is_package or packages_only or name is not None)
+    }
+    packages = {
+        key: check
+        for key, check in checks.items()
+        if check.status == "available" and key not in upgrades
+    }
+    unavailable = sum(check.status == "unavailable" for check in checks.values())
+    held = sum(check.status == "held" for check in checks.values())
+    if unavailable:
+        pprint(f"[yellow]{unavailable} update check(s) unavailable.[/]")
+    if packages:
+        _upgrade_table(state, packages, "Package updates: run irp upgrade --pkg")
+    if not upgrades:
+        if not unavailable and not packages:
+            pprint("[green]No upgrades available.[/]")
         return
+    _upgrade_table(state, upgrades, "The following items will be upgraded:")
+    pprint(f"{len(upgrades)} to upgrade, {held} held.")
+    if not skip_prompt and not typer.confirm("Continue?", default=False):
+        return
+    if any(state[key].is_package for key in upgrades):
+        pprint("Need sudo access for installing packages...")
+        if sh("sudo -v", interactive=True).returncode != 0:
+            pprint("[red]Failed to acquire sudo. Aborting.[/]")
+            return
 
     total = len(upgrades)
     for idx, k in enumerate(upgrades, 1):
         name = irKey.parse(k).name
-        url, new_version, pkg_mode = upgrades[k]
+        url, new_version = upgrades[k].url, upgrades[k].latest_version
+        pkg_mode = state[k].is_package
         docker_opts = state[k].docker_opts
         pct = int(idx * 100 / total)
         pprint(
@@ -296,11 +319,18 @@ def list_install(
         state_info()
         state = cache.state
 
+    state = {
+        key: release
+        for key, release in state.items()
+        if not hold_update or release.hold_update
+    }
+    if state and not as_json:
+        pprint("Checking for release updates…")
+    checks = _check_updates(state)
+
     rows = []
     for key in state:
         release = state[key]
-        if hold_update and not release.hold_update:
-            continue
         name = irKey.parse(key).name
         path_inferred = False
         if release.install_method == "download":
@@ -321,9 +351,7 @@ def list_install(
             {
                 "name": name,
                 "version": release.tag_name,
-                "type": "download"
-                if release.install_method == "download"
-                else (release.package_type if release.is_package else "binary"),
+                "type": _release_type(release),
                 "hold": bool(release.hold_update),
                 "url": release.url,
                 "description": release.description or "",
@@ -331,6 +359,8 @@ def list_install(
                 "download_files": release.download_files,
                 "install_path": install_path,
                 "path_inferred": path_inferred,
+                "update_status": checks[key].status,
+                "latest_version": checks[key].latest_version,
             }
         )
 
@@ -341,7 +371,15 @@ def list_install(
     dim = "[dim]" if hold_update else ""
     table = [
         {
-            "Name": r["name"],
+            "Name": escape(r["name"])
+            + {
+                "available": "\n[yellow]↳ Update available: "
+                + escape(r["latest_version"] or "")
+                + "[/]",
+                "current": "\n[dim green]↳ Up to date[/]",
+                "unavailable": "\n[dim yellow]↳ Update check unavailable[/]",
+                "held": "",
+            }[r["update_status"]],
             "Version": f"{dim}{r['version']}",
             "Type": f"[cyan]{r['type']}" if r["type"] != "binary" else r["type"],
             "Hold": "[yellow]yes" if r["hold"] else "",
@@ -364,13 +402,23 @@ def list_install(
         column_opts={
             # High-priority columns keep their natural width; Url and
             # Description absorb leftover space and truncate first.
-            "Name": {"min_width": min(name_width, 30)},
+            "Name": {
+                "min_width": min(max(name_width, 25), 30),
+                "no_wrap": False,
+                "overflow": "fold",
+            },
             "Version": {"min_width": 7},
             "Install path": {"no_wrap": False, "overflow": "fold", "ratio": 3},
             "Url": {"overflow": "ellipsis", "ratio": 2},
             "Description": {"overflow": "ellipsis", "ratio": 3},
         },
     )
+
+    available = sum(r["update_status"] == "available" for r in rows)
+    if available:
+        pprint(
+            f"[yellow]{available} updates available.[/] Run irp upgrade to review and install."
+        )
 
 
 def get_info(name: str) -> None:

@@ -29,7 +29,7 @@ def test_provider_writes_only_to_custom_directory(monkeypatch, tmp_path, provide
             repo="tool",
         )
         monkeypatch.setattr(
-            mise.MiseInteractProvider, "resolve", lambda *a, **kw: [asset]
+            mise.MiseInteractProvider, "resolve", lambda *a, **kw: [asset.version]
         )
         monkeypatch.setattr(mise.MiseInteractProvider, "select", lambda *a, **kw: asset)
 
