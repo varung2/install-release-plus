@@ -376,7 +376,7 @@ def list_install(
                 "available": "\n[yellow]↳ Update available: "
                 + escape(r["latest_version"] or "")
                 + "[/]",
-                "current": "\n[dim green]↳ Up to date[/]",
+                "current": "",
                 "unavailable": "\n[dim yellow]↳ Update check unavailable[/]",
                 "held": "",
             }[r["update_status"]],
