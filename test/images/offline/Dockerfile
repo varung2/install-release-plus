@@ -10,6 +10,7 @@ COPY InstallRelease ./InstallRelease
 COPY cli ./cli
 RUN uv sync --locked --dev
 COPY build.sh install.sh ./
+COPY scripts ./scripts
 COPY test ./test
 COPY .github/scripts ./.github/scripts
 ENV UV_OFFLINE=true
