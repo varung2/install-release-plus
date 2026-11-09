@@ -80,7 +80,7 @@ def test_ls_table_shows_updates_but_uses_hold_column(projects):
     result = CliRunner().invoke(cli.app, ["ls"], env={"COLUMNS": "240"})
     assert result.exit_code == 0, result.output
     assert "Update available: v2" in result.output
-    assert "Up to date" in result.output
+    assert "Up to date" not in result.output
     assert "Update check unavailable" in result.output
     assert "Updates on hold" not in result.output
     assert "Hold" in result.output
