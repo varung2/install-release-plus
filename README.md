@@ -37,7 +37,7 @@ shell's persistent `PATH` if needed.
 ```
 
 After installation, an interactive run offers to enable shell update
-notifications (default **Yes**); answer `n` to opt out. You can also choose explicitly:
+notifications (default **No**). You can also choose explicitly:
 
 ```bash
 ./install.sh --shell-updates     # Install, then enable startup notifications
