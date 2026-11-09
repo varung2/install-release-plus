@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Install dist/InstallReleasePlus as ~/bin/irp, building this checkout only when needed.
-# Usage: /path/to/install-release-plus/install.sh
+# Usage: ./install.sh [--shell-updates | --no-shell-updates]
 set -euo pipefail
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+shell_updates=ask
+case "${1:-}" in
+  --shell-updates) shell_updates=yes ;;
+  --no-shell-updates) shell_updates=no ;;
+  --help) printf 'Usage: ./install.sh [--shell-updates | --no-shell-updates]\n'; exit 0 ;;
+  "") ;;
+  *) die "Usage: ./install.sh [--shell-updates | --no-shell-updates]" ;;
+esac
+[[ $# -le 1 ]] || die "Pass at most one shell update option."
 
 [[ -n "${BASH_SOURCE[0]:-}" ]] || die "Run install.sh from a local checkout, not through a pipe."
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,3 +47,12 @@ printf '\nTo use it in your current Bash/Zsh terminal, run:\n'
 printf '  export PATH=%q:"$PATH"\n' "$install_dir"
 printf '  hash -r\n'
 printf '  irp --help\n'
+
+if [[ "$shell_updates" == ask && -t 0 && -t 1 ]]; then
+  answer=""
+  read -r -p 'Check for IRP updates when opening a shell (including SSH)? [y/N] ' answer || true
+  case "$answer" in y|Y|yes|YES) shell_updates=yes ;; esac
+fi
+if [[ "$shell_updates" == yes ]]; then
+  python3 "$project_dir/scripts/shell_updates.py" "$install_dir/irp" "${SHELL:-}"
+fi

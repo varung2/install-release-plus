@@ -36,6 +36,30 @@ shell's persistent `PATH` if needed.
 ./install.sh        # Build when needed, then install
 ```
 
+After installation, an interactive run offers to enable shell update
+notifications (default **No**). You can also choose explicitly:
+
+```bash
+./install.sh --shell-updates     # Install, then enable startup notifications
+./install.sh --no-shell-updates  # Install without changing shell configuration
+```
+
+The hook checks tracked releases in the background whenever a new interactive
+shell starts, including SSH logins. It prints only when updates are available:
+`IRP: 2 updates available. Run irp upgrade.` There is no schedule or cache, so each
+new shell makes a fresh check. Your prompt does not wait for the check; the
+notification can appear afterward. Held items are skipped; failed checks are
+silent. Nothing is downloaded or upgraded automatically.
+
+Setup uses `$SHELL`: Bash updates `~/.bashrc` and the active login profile
+(`~/.bash_profile`, `~/.bash_login`, or `~/.profile`); Zsh updates
+`${ZDOTDIR:-$HOME}/.zshrc`. Managed sections are updated without duplicates,
+and a shell checks only once even if both Bash files load. Non-interactive SSH
+commands remain silent. Python 3 must remain available; `jq` is not required.
+Non-interactive installer runs skip setup unless `--shell-updates` is passed.
+`--no-shell-updates` leaves any existing hook unchanged. To disable notifications,
+remove the marked **IRP shell updates** sections from those startup files.
+
 ## Command reference
 
 | Command | Purpose |
