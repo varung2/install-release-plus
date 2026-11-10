@@ -30,23 +30,23 @@ def startup_files(shell: str) -> list[Path]:
 
 def install_hook(binary: str, shell: str) -> None:
     files = startup_files(shell)
-    summarize = (
-        "import json,sys; "
-        "n=sum(r.get('update_status') == 'available' for r in json.load(sys.stdin)); "
-        "print(f'IRP: {n} updates available. Run irp upgrade.') if n else None"
+    runtime = (
+        Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
+        / "install-release-plus/update_notice.py"
+    )
+    runtime = runtime.absolute()
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    runtime.write_bytes(
+        (
+            Path(__file__).resolve().parents[1] / "InstallRelease/update_notice.py"
+        ).read_bytes()
     )
     block = f"""{START}
 case $- in
   *i*)
     if [ -z "${{_IRP_SHELL_UPDATES_STARTED-}}" ] && command -v python3 >/dev/null 2>&1; then
       _IRP_SHELL_UPDATES_STARTED=1
-      {{
-        (
-          {shlex.quote(str(Path(binary).absolute()))} ls --json |
-            python3 -c {shlex.quote(summarize)}
-        ) &
-        disown
-      }} 2>/dev/null || true
+      python3 {shlex.quote(str(runtime))} --notify {shlex.quote(str(Path(binary).absolute()))} 2>/dev/null || true
     fi
     ;;
 esac
