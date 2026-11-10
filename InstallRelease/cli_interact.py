@@ -1,10 +1,12 @@
 import json
 import os
+import time
 from contextlib import redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from typing import Literal
 
+import requests
 import typer
 from rich.console import Console
 from rich.markup import escape
@@ -34,6 +36,7 @@ from InstallRelease.providers.git.main import GitInteractProvider, get_repo_info
 from InstallRelease.providers.git.schemas import Release, TypeState
 from InstallRelease.providers.mise.main import MiseInteractProvider
 from InstallRelease.schemas import irKey
+from InstallRelease.update_notice import save_snapshot, state_digest
 from InstallRelease.utils import (
     PackageVersion,
     is_none,
@@ -140,6 +143,46 @@ class UpdateCheck:
     status: Literal["available", "current", "held", "unavailable"]
     latest_version: str | None = None
     url: str = ""
+    error: str | None = None
+    retry_at: float | None = None
+
+
+def _failed_update(exc: BaseException | None = None) -> UpdateCheck:
+    """Expose a safe failure category without leaking request credentials."""
+    error = "request_failed"
+    retry_at = None
+    while exc is not None:
+        if isinstance(exc, requests.Timeout):
+            error = "timeout"
+        if isinstance(exc, requests.HTTPError) and exc.response is not None:
+            response = exc.response
+            if response.status_code == 429 or (
+                response.status_code == 403
+                and (
+                    response.headers.get("x-ratelimit-remaining") == "0"
+                    or "rate limit" in response.text.lower()
+                )
+            ):
+                error = "rate_limit"
+                try:
+                    retry_at = max(
+                        float(response.headers.get("x-ratelimit-reset", 0)),
+                        time.time() + float(response.headers.get("retry-after", 60)),
+                    )
+                except ValueError:
+                    retry_at = time.time() + 60
+        exc = exc.__cause__ or exc.__context__
+    return UpdateCheck("unavailable", error=error, retry_at=retry_at)
+
+
+def _show_update_errors(checks: dict[str, UpdateCheck]) -> None:
+    if any(check.error == "rate_limit" for check in checks.values()):
+        pprint(
+            "[yellow]Release API rate limit reached. Retry after the limit resets.[/]"
+        )
+        pprint(
+            "For GitHub, configure a token with irp config --github-token to increase the limit."
+        )
 
 
 def _check_updates(state: TypeState, force: bool = False) -> dict[str, UpdateCheck]:
@@ -157,27 +200,27 @@ def _check_updates(state: TypeState, force: bool = False) -> dict[str, UpdateChe
                     pre_release=pre_release_enabled()
                 )
                 if not versions:
-                    return UpdateCheck("unavailable")
+                    return _failed_update()
                 latest = versions[0]
                 available = force or latest != release.tag_name
             elif url.startswith(PROVIDER_STATE_KEY_PREFIXES["docker"]):
                 image = url[len(PROVIDER_STATE_KEY_PREFIXES["docker"]) :]
                 available = docker_needs_update(image, release.tag_name, force=force)
                 if available is None:
-                    return UpdateCheck("unavailable")
+                    return _failed_update()
                 latest = release.tag_name
             else:
                 repo = get_repo_info(url, read_only=True)
                 releases = repo.release(pre_release=pre_release_enabled())
                 if not releases:
-                    return UpdateCheck("unavailable")
+                    return _failed_update(getattr(repo, "last_error", None))
                 latest = releases[0].tag_name
                 available = force or releases[0].published_dt() > release.published_dt()
                 url = repo.repo_url
             return UpdateCheck("available" if available else "current", latest, url)
         except Exception as exc:
             logger.debug("Update check failed for %s: %s", key, exc)
-            return UpdateCheck("unavailable")
+            return _failed_update(exc)
 
     # Providers may print diagnostics before reporting a failed request. Keep
     # those out of JSON and show an explicit per-item status instead.
@@ -249,6 +292,7 @@ def upgrade(
     held = sum(check.status == "held" for check in checks.values())
     if unavailable:
         pprint(f"[yellow]{unavailable} update check(s) unavailable.[/]")
+        _show_update_errors(checks)
     if packages:
         _upgrade_table(state, packages, "Package updates: run irp upgrade --pkg")
     if not upgrades:
@@ -315,6 +359,8 @@ def list_install(
     as_json: bool = False,
 ) -> None:
     """Render a table of installed tools, optionally filtering to held ones only."""
+    save_notice = state is None and not hold_update
+    digest = state_digest() if save_notice else None
     if state is None:
         state_info()
         state = cache.state
@@ -361,9 +407,13 @@ def list_install(
                 "path_inferred": path_inferred,
                 "update_status": checks[key].status,
                 "latest_version": checks[key].latest_version,
+                "update_error": checks[key].error,
+                "update_retry_at": checks[key].retry_at,
             }
         )
 
+    if save_notice:
+        save_snapshot(rows, expected_state=digest)
     if as_json:
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return
@@ -415,6 +465,7 @@ def list_install(
     )
 
     available = sum(r["update_status"] == "available" for r in rows)
+    _show_update_errors(checks)
     if available:
         pprint(
             f"[yellow]{available} updates available.[/] Run irp upgrade to review and install."

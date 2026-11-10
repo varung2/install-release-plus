@@ -119,6 +119,7 @@ class GitHubInfo(RepoInfo):
                 )
         except Exception as e:
             logger.error(f"Failed to fetch releases: {e}")
+            self.last_error = e
             return []
 
         return self.response

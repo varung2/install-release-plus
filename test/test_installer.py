@@ -5,17 +5,35 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from InstallRelease import update_notice
+
+
+def wait_for(path):
+    deadline = time.monotonic() + 5
+    while not path.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert path.exists(), f"Background refresh did not produce {path}"
+
 
 @pytest.fixture
-def installer(tmp_path):
+def installer(tmp_path, monkeypatch):
+    monkeypatch.setenv("IRP_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / ".cache"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".local/share"))
     root = tmp_path / "checkout with spaces"
     root.mkdir()
     shutil.copy2(Path(__file__).parents[1] / "install.sh", root / "install.sh")
     shutil.copytree(Path(__file__).parents[1] / "scripts", root / "scripts")
+    (root / "InstallRelease").mkdir()
+    shutil.copy2(
+        Path(__file__).parents[1] / "InstallRelease/update_notice.py",
+        root / "InstallRelease/update_notice.py",
+    )
     (root / "pyproject.toml").touch()
     (root / "cli").mkdir()
     (root / "cli/__main__.py").touch()
@@ -55,6 +73,7 @@ def installer(tmp_path):
                 "HOME": str(tmp_path),
                 "SHELL": shell,
                 "ZDOTDIR": str(tmp_path / "zsh config"),
+                "XDG_DATA_HOME": str(tmp_path / ".local/share"),
                 "PATH": f"{commands}:{os.environ['PATH']}",
             },
             capture_output=True,
@@ -144,6 +163,7 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
     calls = home / "calls"
     binary = destination / "irp"
     rows = [{"update_status": "available"}] * updates + [{"update_status": "current"}]
+    update_notice.save_snapshot(rows)
     binary.write_text(
         "#!/bin/sh\n"
         f"echo checked >> {shlex.quote(str(calls))}\n"
@@ -166,7 +186,7 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
             "--noprofile",
             "--norc",
             "-ic",
-            f"source {shlex.quote(str(rc))}; source {shlex.quote(str(profile))}",
+            f"source {shlex.quote(str(rc))}; source {shlex.quote(str(profile))}; echo PROMPT_READY",
         ],
         env=env,
         capture_output=True,
@@ -175,10 +195,15 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
     )
     assert result.returncode == 0, result.stderr
     assert "[1]" not in result.stderr
+    wait_for(calls)
     assert calls.read_text().splitlines() == ["checked"]
-    assert ("IRP: 2 updates available" in result.stdout) == bool(updates)
+    assert ("2 IRP updates are available" in result.stdout) == bool(updates)
+    if updates:
+        assert result.stdout.index("2 IRP updates") < result.stdout.index(
+            "PROMPT_READY"
+        )
     if not updates:
-        assert result.stdout == ""
+        assert result.stdout == "PROMPT_READY\n"
 
 
 def test_shell_check_does_not_block_the_prompt(installer):
@@ -208,7 +233,7 @@ def test_shell_check_does_not_block_the_prompt(installer):
         timeout=5,
     )
     assert result.returncode == 0, result.stderr
-    assert done.exists()
+    wait_for(done)
 
 
 def test_invalid_installer_option_does_not_build(installer):

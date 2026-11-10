@@ -143,6 +143,7 @@ class GitlabInfo(RepoInfo):
 
         except Exception as e:
             logger.error(f"Failed to fetch GitLab releases: {e}")
+            self.last_error = e
             return []
 
         return self.response
