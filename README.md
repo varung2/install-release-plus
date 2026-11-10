@@ -44,12 +44,30 @@ notifications (default **No**). You can also choose explicitly:
 ./install.sh --no-shell-updates  # Install without changing shell configuration
 ```
 
-The hook checks tracked releases in the background whenever a new interactive
-shell starts, including SSH logins. It prints only when updates are available:
-`IRP: 2 updates available. Run irp upgrade.` There is no schedule or cache, so each
-new shell makes a fresh check. Your prompt does not wait for the check; the
-notification can appear afterward. Held items are skipped; failed checks are
-silent. Nothing is downloaded or upgraded automatically.
+The hook prints a cached notice before the prompt whenever a new interactive
+shell starts, including SSH logins, then refreshes silently in the background:
+
+```text
+2 IRP updates are available.
+To see available updates, run: irp ls
+To install them, run: irp upgrade
+Last checked: <local date and time>
+```
+
+There is no schedule. Shell startup and `irp ls` refresh the cache. The first
+shell with no cached result stays silent; the next shell shows the result.
+You can also run `irp ls` once to populate it immediately. Current and held items
+produce no notice. Failed checks show an unavailable notice, including API rate
+limits, instead of implying there are no updates. Refreshes honor rate-limit
+backoff when all checked releases are limited; changing authentication allows
+another attempt. Nothing is downloaded or upgraded automatically.
+
+The cache is stored at `${XDG_CACHE_HOME:-$HOME/.cache}/install-release-plus/update-notice.json`
+and invalidated when installed state or configuration changes. Concurrent shells
+share a single refresh, and refresh failures replace old upgrade counts with an
+unavailable result. The standalone notification helper is installed under
+`${XDG_DATA_HOME:-$HOME/.local/share}/install-release-plus/`, so startup does not
+depend on keeping this checkout in place.
 
 Setup uses `$SHELL`: Bash updates `~/.bashrc` and the active login profile
 (`~/.bash_profile`, `~/.bash_login`, or `~/.profile`); Zsh updates
@@ -109,8 +127,14 @@ Remove an existing tracked item before relocating it to a different directory.
 tracking records. Updates appear beneath names; held items use the Hold column
 and skip checks. Failed checks show **Update check unavailable**. JSON includes
 `update_status` (`available`, `current`, `held`, or `unavailable`) and
-`latest_version` (null when not checked or unavailable). These checks require
+`latest_version` (null when not checked or unavailable). `update_error` identifies
+failed checks (`rate_limit`, `timeout`, or `request_failed`); `update_retry_at`
+records the earliest retry time for rate limits as Unix seconds, otherwise null.
+These checks require
 access to the release provider; Docker checks also require the Docker CLI.
+GitHub allows only 60 unauthenticated requests per hour per originating IP;
+configure authentication with `irp config --github-token <token>` to increase
+that limit. A rate-limited check cannot determine whether an upgrade exists.
 
 `upgrade` lists installed and available versions, item types, and source
 repositories before asking **Continue? [y/N]**. Nothing is downloaded or installed

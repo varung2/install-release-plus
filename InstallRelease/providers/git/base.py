@@ -53,6 +53,7 @@ class RepoInfo(Provider):
     token: str = ""
     data: dict[str, Any] | None = None
     info: RepositoryInfo | None = None
+    last_error: Exception | None = None
 
     def _validate_url(self, repo_url: str, domain: str) -> str:
         if domain not in repo_url:

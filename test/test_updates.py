@@ -3,6 +3,7 @@ from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
+import requests
 from typer.testing import CliRunner
 
 from InstallRelease import cli, cli_interact
@@ -124,6 +125,58 @@ def test_ls_hold_skips_all_remote_checks(projects):
     assert result.exit_code == 0, result.output
     assert len(json.loads(result.output)) == 1
     assert not fetched
+
+
+def test_ls_refreshes_banner_cache_but_hold_filter_preserves_it(projects):
+    from InstallRelease.update_notice import cache_path
+
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["ls", "--json"])
+    assert result.exit_code == 0, result.output
+    snapshot = cache_path().read_bytes()
+    assert (
+        sum(row["update_status"] == "available" for row in json.loads(snapshot)["rows"])
+        == 2
+    )
+    assert runner.invoke(cli.app, ["ls", "--hold", "--json"]).exit_code == 0
+    assert cache_path().read_bytes() == snapshot
+
+
+@pytest.mark.parametrize("limited_on", ["metadata", "release"])
+def test_rate_limits_explain_unavailable_checks(monkeypatch, limited_on):
+    url = "https://github.com/owner/tool"
+    monkeypatch.setattr(cache, "state", {f"{url}#tool": release(url)})
+
+    def request(api, **kwargs):
+        response = requests.Response()
+        response.url = api
+        limited = limited_on == "metadata" or api.endswith("/releases/latest")
+        response.status_code = 403 if limited else 200
+        response._content = json.dumps(
+            {"message": "API rate limit exceeded"}
+            if limited
+            else {
+                "name": "tool",
+                "full_name": "owner/tool",
+                "description": "",
+                "stargazers_count": 1,
+                "language": "Python",
+            }
+        ).encode()
+        if limited:
+            response.headers["x-ratelimit-remaining"] = "0"
+        return response
+
+    monkeypatch.setattr(requests, "get", request)
+    runner = CliRunner()
+    result = runner.invoke(cli.app, ["ls", "--json"])
+    assert result.exit_code == 0, result.output
+    row = json.loads(result.output)[0]
+    assert row["update_status"] == "unavailable"
+    assert row["update_error"] == "rate_limit"
+    result = runner.invoke(cli.app, ["ls"])
+    assert "rate limit" in result.output.lower()
+    assert "--github-token" in result.output
 
 
 def test_self_hosted_listing_does_not_register_hosts(monkeypatch):
