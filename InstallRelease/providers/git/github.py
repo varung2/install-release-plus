@@ -19,6 +19,8 @@ class GitHubInfo(RepoInfo):
         repo_url: str,
         data: dict[str, Any] | None = None,
         token: str | None = None,
+        *,
+        fetch_info: bool = True,
     ) -> None:
         data = data or {}
 
@@ -33,6 +35,8 @@ class GitHubInfo(RepoInfo):
 
         self.schemas = data
 
+        if not fetch_info:
+            return
         try:
             self.info = FilterDataclass(self._req(self.api), obj=RepositoryInfo)
         except Exception as e:
