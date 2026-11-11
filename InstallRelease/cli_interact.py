@@ -36,7 +36,7 @@ from InstallRelease.providers.git.main import GitInteractProvider, get_repo_info
 from InstallRelease.providers.git.schemas import Release, TypeState
 from InstallRelease.providers.mise.main import MiseInteractProvider
 from InstallRelease.schemas import irKey
-from InstallRelease.update_notice import save_snapshot, state_digest
+from InstallRelease.update_notice import rate_limited_rows, save_snapshot, state_digest
 from InstallRelease.utils import (
     PackageVersion,
     is_none,
@@ -187,6 +187,7 @@ def _show_update_errors(checks: dict[str, UpdateCheck]) -> None:
 
 def _check_updates(state: TypeState, force: bool = False) -> dict[str, UpdateCheck]:
     """Resolve update metadata concurrently without changing installed state."""
+    limited = {row["url"]: row for row in rate_limited_rows() if row.get("url")}
 
     def task(key: str) -> UpdateCheck:
         release = state[key]
@@ -194,6 +195,12 @@ def _check_updates(state: TypeState, force: bool = False) -> dict[str, UpdateChe
             return UpdateCheck("held")
         try:
             url = irKey.parse(key).url
+            if url in limited:
+                return UpdateCheck(
+                    "unavailable",
+                    error="rate_limit",
+                    retry_at=limited[url]["update_retry_at"],
+                )
             if url.startswith(PROVIDER_STATE_KEY_PREFIXES["mise"]):
                 tool = url[len(PROVIDER_STATE_KEY_PREFIXES["mise"]) :]
                 versions = MiseInteractProvider(tool).resolve(
@@ -270,6 +277,7 @@ def upgrade(
     """Show resolved upgrades and ask before downloading or installing assets."""
     state_info()
     state = cache.state
+    digest = state_digest()
     selected = {
         key: state[key]
         for key in _matching_keys(state, name)
@@ -277,6 +285,19 @@ def upgrade(
     }
     pprint("Checking for release updates…")
     checks = _check_updates(selected, force=force)
+    if name is None and not packages_only and not force:
+        save_snapshot(
+            [
+                {
+                    "url": irKey.parse(key).url,
+                    "update_status": check.status,
+                    "update_error": check.error,
+                    "update_retry_at": check.retry_at,
+                }
+                for key, check in checks.items()
+            ],
+            expected_state=digest,
+        )
     upgrades = {
         key: check
         for key, check in checks.items()

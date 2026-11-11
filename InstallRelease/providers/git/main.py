@@ -106,6 +106,13 @@ def get_repo_info(
                 "gitlab@<host>/<owner>/<repo>, forgejo@<host>/<owner>/<repo>."
             )
         cls, get_token = _PROVIDER_CLASSES[provider_name]
+        if read_only and provider_name == "github":
+            return cls(
+                repo_url,
+                data or {},
+                get_token(config, repo_url, False),
+                fetch_info=False,
+            )
         return cls(repo_url, data or {}, get_token(config, repo_url, not read_only))
     except (UnsupportedRepositoryError, ApiError) as e:
         if read_only:
