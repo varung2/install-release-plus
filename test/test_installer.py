@@ -5,19 +5,11 @@ import shlex
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
 from InstallRelease import update_notice
-
-
-def wait_for(path):
-    deadline = time.monotonic() + 5
-    while not path.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert path.exists(), f"Background refresh did not produce {path}"
 
 
 @pytest.fixture
@@ -164,6 +156,10 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
     binary = destination / "irp"
     rows = [{"update_status": "available"}] * updates + [{"update_status": "current"}]
     update_notice.save_snapshot(rows)
+    path = update_notice.cache_path()
+    snapshot = json.loads(path.read_text())
+    snapshot["checked_at"] -= 7 * 3600
+    path.write_text(json.dumps(snapshot))
     binary.write_text(
         "#!/bin/sh\n"
         f"echo checked >> {shlex.quote(str(calls))}\n"
@@ -195,7 +191,6 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
     )
     assert result.returncode == 0, result.stderr
     assert "[1]" not in result.stderr
-    wait_for(calls)
     assert calls.read_text().splitlines() == ["checked"]
     assert ("2 IRP updates are available" in result.stdout) == bool(updates)
     if updates:
@@ -206,18 +201,15 @@ def test_shell_hook_runs_once_and_only_for_interactive_shells(installer, updates
         assert result.stdout == "PROMPT_READY\n"
 
 
-def test_shell_check_does_not_block_the_prompt(installer):
+def test_fresh_cache_never_runs_the_checker_at_shell_startup(installer):
     root, destination, _, run = installer
     assert run("fresh", "--shell-updates").returncode == 0
     home = root.parent
     ready = home / "prompt-ready"
     done = home / "checked"
-    # A blocking hook would deadlock: the shell must advance to release this check.
+    update_notice.save_snapshot([{"update_status": "current"}])
     (destination / "irp").write_text(
-        "#!/bin/sh\n"
-        f"while [ ! -f {shlex.quote(str(ready))} ]; do sleep 0.01; done\n"
-        f"touch {shlex.quote(str(done))}\n"
-        "echo '[]'\n"
+        f"#!/bin/sh\ntouch {shlex.quote(str(done))}\necho '[]'\n"
     )
     result = subprocess.run(
         [
@@ -233,7 +225,8 @@ def test_shell_check_does_not_block_the_prompt(installer):
         timeout=5,
     )
     assert result.returncode == 0, result.stderr
-    wait_for(done)
+    assert ready.exists()
+    assert not done.exists()
 
 
 def test_invalid_installer_option_does_not_build(installer):

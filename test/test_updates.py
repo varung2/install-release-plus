@@ -11,6 +11,11 @@ from InstallRelease.config import cache
 from InstallRelease.providers.git.schemas import Release
 
 
+@pytest.fixture(autouse=True)
+def isolated_notice_cache(monkeypatch, tmp_path):
+    monkeypatch.setenv("IRP_STATE_DIR", str(tmp_path))
+
+
 def release(url, tag="v1", **kwargs):
     return Release(
         url=url,
@@ -142,29 +147,21 @@ def test_ls_refreshes_banner_cache_but_hold_filter_preserves_it(projects):
     assert cache_path().read_bytes() == snapshot
 
 
-@pytest.mark.parametrize("limited_on", ["metadata", "release"])
-def test_rate_limits_explain_unavailable_checks(monkeypatch, limited_on):
+@pytest.mark.parametrize("status, remaining", [(403, "0"), (403, "9"), (429, None)])
+def test_rate_limits_explain_unavailable_checks(monkeypatch, status, remaining):
     url = "https://github.com/owner/tool"
     monkeypatch.setattr(cache, "state", {f"{url}#tool": release(url)})
 
+    calls = []
+
     def request(api, **kwargs):
+        calls.append(api)
         response = requests.Response()
         response.url = api
-        limited = limited_on == "metadata" or api.endswith("/releases/latest")
-        response.status_code = 403 if limited else 200
-        response._content = json.dumps(
-            {"message": "API rate limit exceeded"}
-            if limited
-            else {
-                "name": "tool",
-                "full_name": "owner/tool",
-                "description": "",
-                "stargazers_count": 1,
-                "language": "Python",
-            }
-        ).encode()
-        if limited:
-            response.headers["x-ratelimit-remaining"] = "0"
+        response.status_code = status
+        response._content = b'{"message":"API rate limit exceeded"}'
+        if remaining is not None:
+            response.headers["x-ratelimit-remaining"] = remaining
         return response
 
     monkeypatch.setattr(requests, "get", request)
@@ -177,6 +174,46 @@ def test_rate_limits_explain_unavailable_checks(monkeypatch, limited_on):
     result = runner.invoke(cli.app, ["ls"])
     assert "rate limit" in result.output.lower()
     assert "--github-token" in result.output
+    assert calls == ["https://api.github.com/repos/owner/tool/releases/latest"]
+
+
+def test_other_commands_never_check_for_release_updates(monkeypatch):
+    url = "https://github.com/owner/tool"
+    monkeypatch.setattr(cache, "state", {f"{url}#tool": release(url)})
+    monkeypatch.setattr(
+        requests, "get", lambda *a, **kw: pytest.fail("Unexpected network request")
+    )
+    for command in (
+        ["--help"],
+        ["ls", "--help"],
+        ["get", "--help"],
+        ["info", "tool"],
+        ["me", "--version"],
+    ):
+        result = CliRunner().invoke(cli.app, command)
+        assert result.exit_code == 0, result.output
+
+
+def test_explicit_checks_use_one_github_request_per_item(monkeypatch):
+    url = "https://github.com/owner/tool"
+    monkeypatch.setattr(cache, "state", {f"{url}#tool": release(url)})
+    calls = []
+
+    def request(api, **kwargs):
+        calls.append(api)
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"tag_name": "v1", "published_at": "2026-01-01T00:00:00Z", "assets": []}
+        ).encode()
+        return response
+
+    monkeypatch.setattr(requests, "get", request)
+    runner = CliRunner()
+    for command in (["ls", "--json"], ["upgrade"], ["ls", "--json"]):
+        result = runner.invoke(cli.app, command)
+        assert result.exit_code == 0, result.output
+    assert calls == ["https://api.github.com/repos/owner/tool/releases/latest"] * 3
 
 
 def test_self_hosted_listing_does_not_register_hosts(monkeypatch):

@@ -44,8 +44,8 @@ notifications (default **No**). You can also choose explicitly:
 ./install.sh --no-shell-updates  # Install without changing shell configuration
 ```
 
-The hook prints a cached notice before the prompt whenever a new interactive
-shell starts, including SSH logins, then refreshes silently in the background:
+The hook prints a notice before the prompt whenever a new interactive shell
+starts, including SSH logins:
 
 ```text
 2 IRP updates are available.
@@ -54,17 +54,30 @@ To install them, run: irp upgrade
 Last checked: <local date and time>
 ```
 
-There is no schedule. Shell startup and `irp ls` refresh the cache. The first
-shell with no cached result stays silent; the next shell shows the result.
-You can also run `irp ls` once to populate it immediately. Current and held items
-produce no notice. Failed checks show an unavailable notice, including API rate
-limits, instead of implying there are no updates. Refreshes honor rate-limit
-backoff when all checked releases are limited; changing authentication allows
-another attempt. Nothing is downloaded or upgraded automatically.
+Update checks run only on these user actions:
+
+- `irp ls` checks the tracked releases explicitly.
+- `irp upgrade` checks the selected releases explicitly.
+- Starting an interactive shell or SSH session uses the cache for **six hours**.
+  Only the first startup with a missing, invalidated, or expired cache checks
+  synchronously, before the prompt. This check is capped at five seconds; on a
+  timeout, the checker and its child processes are stopped before returning.
+
+There are no background refreshes, timers, or scheduled package checks. A fresh
+shell cache starts no checker process and makes no release requests. `ls` and a
+full, non-forced `upgrade` also refresh that cache. GitHub version checks use one
+release API request per tracked item, skipping repository metadata. Held items
+are never checked. Installation still fetches the release assets it needs.
+
+Current and held items produce no notice. Failed checks show an unavailable
+notice, including API rate limits, instead of implying there are no updates.
+Known rate-limit reset times are honored by all update checks, including explicit
+commands; changing authentication invalidates the cached cooldown. Nothing is
+downloaded or upgraded automatically.
 
 The cache is stored at `${XDG_CACHE_HOME:-$HOME/.cache}/install-release-plus/update-notice.json`
 and invalidated when installed state or configuration changes. Concurrent shells
-share a single refresh, and refresh failures replace old upgrade counts with an
+share a single foreground refresh, and refresh failures replace old upgrade counts with an
 unavailable result. The standalone notification helper is installed under
 `${XDG_DATA_HOME:-$HOME/.local/share}/install-release-plus/`, so startup does not
 depend on keeping this checkout in place.
