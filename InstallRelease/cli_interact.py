@@ -459,7 +459,7 @@ def list_install(
                 or ("System package manager" if r["type"] != "download" else "Unknown")
             )
             + (" (inferred)" if r["path_inferred"] else ""),
-            "Url": f"{dim}{r['url']}",
+            "Url": f"{dim}[link={r['url']}]{escape(r['url'])}[/link]" if r["url"] else "",
             "Description": f"[dim yellow]{r['description']}",
         }
         for r in rows
