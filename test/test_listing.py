@@ -1,8 +1,10 @@
+import io
 import json
 
+from rich.console import Console
 from typer.testing import CliRunner
 
-from InstallRelease import cli, cli_interact
+from InstallRelease import cli, cli_interact, utils
 from InstallRelease.config import cache
 from InstallRelease.providers.git.schemas import Release
 
@@ -105,3 +107,16 @@ def test_remove_uses_recorded_binary_path(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     assert not original.exists()
     assert other.read_bytes() == b"unrelated"
+
+
+def test_truncated_repository_link_keeps_full_target(monkeypatch):
+    url = "https://github.com/example/" + "long-repository-name-" * 8
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.setattr(cache, "state", {f"{url}#tool": release(url, hold_update=True)})
+    output = io.StringIO()
+    monkeypatch.setattr(
+        utils, "Console", lambda: Console(file=output, force_terminal=True, width=160)
+    )
+    result = CliRunner().invoke(cli.app, ["ls"])
+    assert result.exit_code == 0, result.output
+    assert f";{url}\x1b\\" in output.getvalue()

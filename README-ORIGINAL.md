@@ -838,7 +838,10 @@ This is useful when you want to install pre-release versions of tools like beta 
 
 ```bash
 ❯ irp config --pre-release
+❯ irp config --no-pre-release
 ```
+
+Other `irp config` options preserve this setting when neither flag is supplied.
 
 #### Configure provider tokens for higher rate limits 🔑
 
